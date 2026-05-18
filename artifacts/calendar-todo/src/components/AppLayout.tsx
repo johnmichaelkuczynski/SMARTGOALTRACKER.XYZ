@@ -24,7 +24,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <header className="border-b border-border bg-card/60 backdrop-blur sticky top-0 z-30">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center gap-6">
           <div className="flex items-baseline gap-3">
-            <div className="font-serif text-2xl tracking-tight text-foreground">Tally</div>
+            <div className="font-serif text-2xl tracking-tight text-foreground">Goal Tracker</div>
             <div className="text-xs uppercase tracking-widest text-muted-foreground hidden sm:block">
               honest follow-through
             </div>

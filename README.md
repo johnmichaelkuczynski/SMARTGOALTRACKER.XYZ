@@ -1,4 +1,4 @@
-# 🗓️ TALLY
+# 🗓️ GOAL TRACKER
 
 **A Calendar-Based To-Do Tracker with Honest Follow-Through Analytics**
 
