@@ -84,7 +84,7 @@ export function TaskRow({ task, date, completed, showDate }: Props) {
         size="icon"
         className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity"
         onClick={() => {
-          if (confirm(`Delete "${task.title}"?`)) deleteTask(task.id);
+          deleteTask(task.id);
         }}
         aria-label="Delete"
       >
