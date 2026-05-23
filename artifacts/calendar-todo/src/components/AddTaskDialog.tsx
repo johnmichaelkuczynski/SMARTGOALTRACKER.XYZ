@@ -71,7 +71,7 @@ export function AddTaskDialog({ open, onOpenChange, defaults }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="font-serif text-xl">New task</DialogTitle>
         </DialogHeader>
@@ -173,13 +173,14 @@ export function AddTaskDialog({ open, onOpenChange, defaults }: Props) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="notes">Notes</Label>
+            <Label htmlFor="notes" className="text-base">Notes</Label>
             <Textarea
               id="notes"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Anything to remember about this?"
-              rows={2}
+              placeholder="Describe this task to yourself — what it actually means, why it matters, what done looks like, anything you'll want to remember when you come back to it."
+              rows={12}
+              className="min-h-[260px] text-base leading-relaxed resize-y"
             />
           </div>
         </div>
