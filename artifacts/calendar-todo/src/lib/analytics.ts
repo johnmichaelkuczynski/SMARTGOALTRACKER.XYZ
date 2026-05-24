@@ -72,9 +72,11 @@ export function computeAnalytics(tasks: Task[], completions: Completion[]) {
 export function dueByItems(tasks: Task[], completions: Completion[]) {
   const today = startOfDay(new Date());
   return tasks
-    .filter((t) => !t.archived && t.scheduleType === "by")
+    .filter((t) => !t.archived)
+    .filter((t) => t.scheduleType === "by" || (t.scheduleType === "on" && t.dueBy && t.dueBy !== t.date))
     .map((t) => {
-      const dueDate = parse(t.date);
+      const dueStr = t.scheduleType === "by" ? t.date : (t.dueBy as string);
+      const dueDate = parse(dueStr);
       const done = completions.some(
         (c) => c.taskId === t.id && parse(c.date).getTime() <= dueDate.getTime(),
       );

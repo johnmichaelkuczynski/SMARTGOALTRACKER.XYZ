@@ -15,6 +15,15 @@ interface Props {
 
 export function TaskRow({ task, date, completed, showDate }: Props) {
   const dueDate = task.scheduleType === "by" ? parse(task.date) : null;
+  const dueByDate = task.scheduleType === "on" && task.dueBy && task.dueBy !== task.date
+    ? parse(task.dueBy)
+    : null;
+
+  function gotoDate(dateStr: string, e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    window.dispatchEvent(new CustomEvent("goto-date", { detail: dateStr }));
+  }
   return (
     <motion.div
       layout
@@ -50,6 +59,17 @@ export function TaskRow({ task, date, completed, showDate }: Props) {
               <CalendarClock className="h-3 w-3" />
               by {format(dueDate, "MMM d")}
             </span>
+          )}
+          {dueByDate && task.dueBy && (
+            <a
+              href={`#date=${task.dueBy}`}
+              onClick={(e) => gotoDate(task.dueBy!, e)}
+              className="inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
+              title={`Jump to ${format(dueByDate, "EEEE, MMMM d, yyyy")}`}
+            >
+              <CalendarClock className="h-3 w-3" />
+              due by {format(dueByDate, "MMM d")}
+            </a>
           )}
           {task.recurrence !== "none" && (
             <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">

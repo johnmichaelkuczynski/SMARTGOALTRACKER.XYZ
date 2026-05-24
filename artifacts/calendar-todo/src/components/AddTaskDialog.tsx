@@ -35,6 +35,7 @@ export function AddTaskDialog({ open, onOpenChange, defaults }: Props) {
   const [timeframe, setTimeframe] = useState<Timeframe>("daily");
   const [scheduleType, setScheduleType] = useState<ScheduleType>("on");
   const [date, setDate] = useState(today);
+  const [dueBy, setDueBy] = useState(today);
   const [recurrence, setRecurrence] = useState<Recurrence>("none");
   const [recurrenceEndDate, setRecurrenceEndDate] = useState("");
   const [useImportance, setUseImportance] = useState(false);
@@ -47,6 +48,7 @@ export function AddTaskDialog({ open, onOpenChange, defaults }: Props) {
       setTimeframe(defaults?.timeframe ?? "daily");
       setScheduleType(defaults?.scheduleType ?? "on");
       setDate(defaults?.date ?? today);
+      setDueBy(defaults?.dueBy ?? defaults?.date ?? today);
       setRecurrence(defaults?.recurrence ?? "none");
       setRecurrenceEndDate(defaults?.recurrenceEndDate ?? "");
       setUseImportance(typeof defaults?.importance === "number");
@@ -62,6 +64,7 @@ export function AddTaskDialog({ open, onOpenChange, defaults }: Props) {
       timeframe,
       scheduleType,
       date,
+      dueBy: scheduleType === "on" && dueBy && dueBy !== date ? dueBy : undefined,
       recurrence: scheduleType === "by" ? "none" : recurrence,
       recurrenceEndDate: recurrenceEndDate || undefined,
       importance: useImportance ? importance : undefined,
@@ -114,9 +117,35 @@ export function AddTaskDialog({ open, onOpenChange, defaults }: Props) {
             </div>
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="date">{scheduleType === "by" ? "Deadline" : "Day"}</Label>
-            <Input id="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+          <div className={scheduleType === "on" ? "grid grid-cols-2 gap-3" : "space-y-2"}>
+            <div className="space-y-2">
+              <Label htmlFor="date">{scheduleType === "by" ? "Deadline" : "Day"}</Label>
+              <Input
+                id="date"
+                type="date"
+                value={date}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  setDate(v);
+                  if (!dueBy || dueBy < v) setDueBy(v);
+                }}
+              />
+            </div>
+            {scheduleType === "on" && (
+              <div className="space-y-2">
+                <Label htmlFor="dueBy">Due by</Label>
+                <Input
+                  id="dueBy"
+                  type="date"
+                  value={dueBy}
+                  min={date}
+                  onChange={(e) => setDueBy(e.target.value)}
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Defaults to the same day. Set a later date to give yourself a deadline.
+                </p>
+              </div>
+            )}
           </div>
 
           {scheduleType === "on" && (

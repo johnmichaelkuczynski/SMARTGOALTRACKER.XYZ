@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   addMonths,
   endOfMonth,
@@ -22,6 +22,32 @@ export default function DayView() {
   const [selected, setSelected] = useState(() => new Date());
   const [monthAnchor, setMonthAnchor] = useState(() => new Date());
   const { tasks, completions } = useStore();
+
+  useEffect(() => {
+    function applyHash() {
+      const m = window.location.hash.match(/date=(\d{4}-\d{2}-\d{2})/);
+      if (m) {
+        const d = parse(m[1]);
+        setSelected(d);
+        setMonthAnchor(d);
+        history.replaceState(null, "", window.location.pathname + window.location.search);
+      }
+    }
+    applyHash();
+    function onGoto(e: Event) {
+      const detail = (e as CustomEvent<string>).detail;
+      if (!detail) return;
+      const d = parse(detail);
+      setSelected(d);
+      setMonthAnchor(d);
+    }
+    window.addEventListener("goto-date", onGoto);
+    window.addEventListener("hashchange", applyHash);
+    return () => {
+      window.removeEventListener("goto-date", onGoto);
+      window.removeEventListener("hashchange", applyHash);
+    };
+  }, []);
 
   const dateStr = fmt(selected);
   const dayTasks = useMemo(() => tasksForDate(tasks, dateStr), [tasks, dateStr]);

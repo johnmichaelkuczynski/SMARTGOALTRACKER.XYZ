@@ -9,6 +9,8 @@ export interface Task {
   timeframe: Timeframe;
   scheduleType: ScheduleType;
   date: string;
+  /** Optional deadline for tasks scheduled on a specific day. If unset, the task is due on its scheduled day. */
+  dueBy?: string;
   importance?: number;
   recurrence: Recurrence;
   recurrenceEndDate?: string;
