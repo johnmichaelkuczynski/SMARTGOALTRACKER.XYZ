@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CalendarDays, ListTodo, Target, BarChart3, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { computeAnalytics } from "@/lib/analytics";
@@ -16,8 +16,33 @@ const NAV = [
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [open, setOpen] = useState(false);
+  const [editId, setEditId] = useState<string | undefined>(undefined);
   const { tasks, completions } = useStore();
   const stats = computeAnalytics(tasks, completions);
+
+  const editingTask = editId ? tasks.find((t) => t.id === editId) : undefined;
+
+  useEffect(() => {
+    function onEdit(e: Event) {
+      const id = (e as CustomEvent<string>).detail;
+      if (id) {
+        setEditId(id);
+        setOpen(true);
+      }
+    }
+    window.addEventListener("edit-task", onEdit);
+    return () => window.removeEventListener("edit-task", onEdit);
+  }, []);
+
+  function openCreate() {
+    setEditId(undefined);
+    setOpen(true);
+  }
+
+  function handleOpenChange(v: boolean) {
+    setOpen(v);
+    if (!v) setEditId(undefined);
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -36,7 +61,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <Stat label="Medium" value={`${Math.round(stats.byTimeframe.medium.rate * 100)}%`} />
             <Stat label="Long" value={`${Math.round(stats.byTimeframe.long.rate * 100)}%`} />
           </div>
-          <Button onClick={() => setOpen(true)} size="sm" className="gap-2">
+          <Button onClick={openCreate} size="sm" className="gap-2">
             <Plus className="h-4 w-4" /> Add
           </Button>
         </div>
@@ -62,7 +87,13 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </nav>
       </header>
       <main className="flex-1 max-w-6xl mx-auto px-6 py-8 w-full">{children}</main>
-      <AddTaskDialog open={open} onOpenChange={setOpen} />
+      <AddTaskDialog
+        key={editId ?? "new"}
+        open={open}
+        onOpenChange={handleOpenChange}
+        editId={editId}
+        defaults={editingTask}
+      />
     </div>
   );
 }

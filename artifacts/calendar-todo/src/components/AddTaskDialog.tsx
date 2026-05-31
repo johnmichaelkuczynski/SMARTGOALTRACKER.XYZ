@@ -19,16 +19,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
-import { addTask } from "@/lib/storage";
+import { addTask, updateTask } from "@/lib/storage";
 import type { Recurrence, ScheduleType, Task, Timeframe } from "@/lib/types";
 
 interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   defaults?: Partial<Task>;
+  /** When set, the dialog edits this existing task instead of creating a new one. */
+  editId?: string;
 }
 
-export function AddTaskDialog({ open, onOpenChange, defaults }: Props) {
+export function AddTaskDialog({ open, onOpenChange, defaults, editId }: Props) {
+  const isEdit = Boolean(editId);
   const today = format(new Date(), "yyyy-MM-dd");
   const [title, setTitle] = useState("");
   const [notes, setNotes] = useState("");
@@ -43,8 +46,8 @@ export function AddTaskDialog({ open, onOpenChange, defaults }: Props) {
 
   useEffect(() => {
     if (open) {
-      setTitle("");
-      setNotes("");
+      setTitle(isEdit ? (defaults?.title ?? "") : "");
+      setNotes(isEdit ? (defaults?.notes ?? "") : "");
       setTimeframe(defaults?.timeframe ?? "daily");
       setScheduleType(defaults?.scheduleType ?? "on");
       setDate(defaults?.date ?? today);
@@ -58,17 +61,22 @@ export function AddTaskDialog({ open, onOpenChange, defaults }: Props) {
 
   function submit() {
     if (!title.trim()) return;
-    addTask({
+    const payload = {
       title: title.trim(),
       notes: notes.trim() || undefined,
       timeframe,
       scheduleType,
       date,
       dueBy: scheduleType === "on" && dueBy && dueBy !== date ? dueBy : undefined,
-      recurrence: scheduleType === "by" ? "none" : recurrence,
+      recurrence: scheduleType === "by" ? ("none" as Recurrence) : recurrence,
       recurrenceEndDate: recurrenceEndDate || undefined,
       importance: useImportance ? importance : undefined,
-    });
+    };
+    if (editId) {
+      updateTask(editId, payload);
+    } else {
+      addTask(payload);
+    }
     onOpenChange(false);
   }
 
@@ -76,7 +84,7 @@ export function AddTaskDialog({ open, onOpenChange, defaults }: Props) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="font-serif text-xl">New task</DialogTitle>
+          <DialogTitle className="font-serif text-xl">{isEdit ? "Edit task" : "New task"}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-2">
@@ -215,7 +223,7 @@ export function AddTaskDialog({ open, onOpenChange, defaults }: Props) {
         </div>
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={submit} disabled={!title.trim()}>Add task</Button>
+          <Button onClick={submit} disabled={!title.trim()}>{isEdit ? "Save changes" : "Add task"}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

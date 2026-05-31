@@ -18,10 +18,16 @@ export interface Task {
   archived?: boolean;
 }
 
+export type CompletionStatus = "done" | "partial";
+
 export interface Completion {
   taskId: string;
   date: string;
   completedAt: string;
+  /** "done" = fully accomplished, "partial" = partially accomplished. Missing (legacy) is treated as "done". */
+  status?: CompletionStatus;
+  /** Optional note: a remark on a done task, or what's left to do on a partial one. */
+  comment?: string;
 }
 
 export interface StoreState {

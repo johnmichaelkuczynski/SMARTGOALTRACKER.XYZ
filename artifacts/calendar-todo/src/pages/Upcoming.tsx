@@ -10,6 +10,9 @@ export default function Upcoming() {
   const items = dueByItems(tasks, completions);
   const today = startOfDay(new Date());
 
+  const completionFor = (taskId: string, date: string) =>
+    completions.find((c) => c.taskId === taskId && c.date === date);
+
   const overdue = items.filter((i) => i.overdue);
   const todayItems = items.filter((i) => isToday(i.dueDate) && !i.overdue);
   const upcoming = items.filter((i) => !i.overdue && !isToday(i.dueDate));
@@ -38,7 +41,7 @@ export default function Upcoming() {
                 key={task.id}
                 task={task}
                 date={fmt(dueDate)}
-                completed={false}
+                completion={completionFor(task.id, fmt(dueDate))}
                 showDate
               />
             ))}
@@ -56,7 +59,7 @@ export default function Upcoming() {
         <Section title="Today">
           <AnimatePresence mode="popLayout">
             {todayItems.map(({ task, dueDate }) => (
-              <TaskRow key={task.id} task={task} date={fmt(dueDate)} completed={false} />
+              <TaskRow key={task.id} task={task} date={fmt(dueDate)} completion={completionFor(task.id, fmt(dueDate))} />
             ))}
           </AnimatePresence>
         </Section>
@@ -67,7 +70,7 @@ export default function Upcoming() {
           <AnimatePresence mode="popLayout">
             {upcoming.map(({ task, dueDate }) => (
               <div key={task.id} className="space-y-1">
-                <TaskRow task={task} date={fmt(dueDate)} completed={false} showDate />
+                <TaskRow task={task} date={fmt(dueDate)} completion={completionFor(task.id, fmt(dueDate))} showDate />
                 <div className="pl-8 text-[11px] text-muted-foreground">
                   in {differenceInDays(dueDate, today)} days — {format(dueDate, "EEEE, MMMM d")}
                 </div>

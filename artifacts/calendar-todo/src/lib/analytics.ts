@@ -10,8 +10,23 @@ export interface Stats {
 
 const HORIZON_DAYS = 365;
 
-function isCompleted(completions: Completion[], taskId: string, date: string): boolean {
-  return completions.some((c) => c.taskId === taskId && c.date === date);
+/** Credit for a completion: full = 1, partial = 0.5, none = 0. Legacy completions (no status) count as done. */
+function creditFor(completions: Completion[], taskId: string, date: string): number {
+  const c = completions.find((x) => x.taskId === taskId && x.date === date);
+  if (!c) return 0;
+  return c.status === "partial" ? 0.5 : 1;
+}
+
+/** Best credit from any completion on or before the given time (for "by" deadlines). */
+function creditOnOrBefore(completions: Completion[], taskId: string, t: number): number {
+  let best = 0;
+  for (const c of completions) {
+    if (c.taskId !== taskId) continue;
+    if (parse(c.date).getTime() <= t) {
+      best = Math.max(best, c.status === "partial" ? 0.5 : 1);
+    }
+  }
+  return best;
 }
 
 /**
@@ -29,13 +44,9 @@ function statsFor(task: Task, completions: Completion[], today: Date): Stats {
     if (isAfter(d, today)) continue;
     due += 1;
     if (task.scheduleType === "by") {
-      // completed if any completion before or on the by-date
-      const any = completions.some(
-        (c) => c.taskId === task.id && parse(c.date).getTime() <= d.getTime(),
-      );
-      if (any) done += 1;
-    } else if (isCompleted(completions, task.id, date)) {
-      done += 1;
+      done += creditOnOrBefore(completions, task.id, d.getTime());
+    } else {
+      done += creditFor(completions, task.id, date);
     }
   }
   return { due, done, rate: due ? done / due : 0 };
@@ -78,7 +89,10 @@ export function dueByItems(tasks: Task[], completions: Completion[]) {
       const dueStr = t.scheduleType === "by" ? t.date : (t.dueBy as string);
       const dueDate = parse(dueStr);
       const done = completions.some(
-        (c) => c.taskId === t.id && parse(c.date).getTime() <= dueDate.getTime(),
+        (c) =>
+          c.taskId === t.id &&
+          (c.status ?? "done") === "done" &&
+          parse(c.date).getTime() <= dueDate.getTime(),
       );
       const overdue = isAfter(today, dueDate) && !done;
       return { task: t, done, overdue, dueDate };

@@ -52,14 +52,17 @@ export default function DayView() {
   const dateStr = fmt(selected);
   const dayTasks = useMemo(() => tasksForDate(tasks, dateStr), [tasks, dateStr]);
 
-  const todo = dayTasks.filter(
-    (t) => !completions.some((c) => c.taskId === t.id && c.date === dateStr),
-  );
-  const done = dayTasks.filter((t) =>
-    completions.some((c) => c.taskId === t.id && c.date === dateStr),
-  );
+  const completionFor = (taskId: string) =>
+    completions.find((c) => c.taskId === taskId && c.date === dateStr);
 
-  const dayRate = dayTasks.length ? done.length / dayTasks.length : 0;
+  const todo = dayTasks.filter((t) => !completionFor(t.id));
+  const done = dayTasks.filter((t) => completionFor(t.id));
+
+  const credit = done.reduce(
+    (sum, t) => sum + (completionFor(t.id)?.status === "partial" ? 0.5 : 1),
+    0,
+  );
+  const dayRate = dayTasks.length ? credit / dayTasks.length : 0;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-8">
@@ -110,7 +113,7 @@ export default function DayView() {
                 <EmptyMsg>Nothing planned. Add something — or rest is a choice too.</EmptyMsg>
               ) : (
                 todo.map((t) => (
-                  <TaskRow key={t.id} task={t} date={dateStr} completed={false} />
+                  <TaskRow key={t.id} task={t} date={dateStr} />
                 ))
               )}
             </AnimatePresence>
@@ -121,7 +124,7 @@ export default function DayView() {
                 <EmptyMsg>Nothing checked off yet today.</EmptyMsg>
               ) : (
                 done.map((t) => (
-                  <TaskRow key={t.id} task={t} date={dateStr} completed />
+                  <TaskRow key={t.id} task={t} date={dateStr} completion={completionFor(t.id)} />
                 ))
               )}
             </AnimatePresence>

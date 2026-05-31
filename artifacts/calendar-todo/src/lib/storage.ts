@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import type { Completion, StoreState, Task } from "./types";
+import type { Completion, CompletionStatus, StoreState, Task } from "./types";
 import { seedData } from "./seed";
 
 const KEY = "tally:v1";
@@ -86,19 +86,51 @@ export function deleteTask(id: string) {
 export function toggleCompletion(taskId: string, date: string) {
   const existing = state.completions.find((c) => c.taskId === taskId && c.date === date);
   if (existing) {
+    clearCompletion(taskId, date);
+  } else {
+    setCompletion(taskId, date, "done");
+  }
+}
+
+/** Mark (or update) a completion with a status and optional comment. */
+export function setCompletion(
+  taskId: string,
+  date: string,
+  status: CompletionStatus,
+  comment?: string,
+) {
+  const existing = state.completions.find((c) => c.taskId === taskId && c.date === date);
+  const trimmed = comment?.trim() || undefined;
+  if (existing) {
     state = {
       ...state,
-      completions: state.completions.filter((c) => !(c.taskId === taskId && c.date === date)),
+      completions: state.completions.map((c) =>
+        c.taskId === taskId && c.date === date ? { ...c, status, comment: trimmed } : c,
+      ),
     };
   } else {
     const completion: Completion = {
       taskId,
       date,
       completedAt: new Date().toISOString(),
+      status,
+      comment: trimmed,
     };
     state = { ...state, completions: [...state.completions, completion] };
   }
   persist();
+}
+
+export function clearCompletion(taskId: string, date: string) {
+  state = {
+    ...state,
+    completions: state.completions.filter((c) => !(c.taskId === taskId && c.date === date)),
+  };
+  persist();
+}
+
+export function getCompletion(taskId: string, date: string): Completion | undefined {
+  return state.completions.find((c) => c.taskId === taskId && c.date === date);
 }
 
 export function isCompleted(taskId: string, date: string): boolean {
