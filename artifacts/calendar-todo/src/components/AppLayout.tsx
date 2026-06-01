@@ -1,9 +1,11 @@
 import { Link, useLocation } from "wouter";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CalendarDays, ListTodo, Target, BarChart3, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { computeAnalytics } from "@/lib/analytics";
 import { useStore } from "@/lib/storage";
+import { getViewDate } from "@/lib/viewDate";
+import type { Task } from "@/lib/types";
 import { AddTaskDialog } from "./AddTaskDialog";
 
 const NAV = [
@@ -17,10 +19,15 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [open, setOpen] = useState(false);
   const [editId, setEditId] = useState<string | undefined>(undefined);
+  const [createDate, setCreateDate] = useState<string | undefined>(undefined);
   const { tasks, completions } = useStore();
   const stats = computeAnalytics(tasks, completions);
 
   const editingTask = editId ? tasks.find((t) => t.id === editId) : undefined;
+  const createDefaults = useMemo<Partial<Task> | undefined>(
+    () => (createDate ? { date: createDate, dueBy: createDate } : undefined),
+    [createDate],
+  );
 
   useEffect(() => {
     function onEdit(e: Event) {
@@ -36,6 +43,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
   function openCreate() {
     setEditId(undefined);
+    setCreateDate(getViewDate());
     setOpen(true);
   }
 
@@ -88,11 +96,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       </header>
       <main className="flex-1 max-w-6xl mx-auto px-6 py-8 w-full">{children}</main>
       <AddTaskDialog
-        key={editId ?? "new"}
+        key={editId ?? `new:${createDate ?? ""}`}
         open={open}
         onOpenChange={handleOpenChange}
         editId={editId}
-        defaults={editingTask}
+        defaults={editingTask ?? createDefaults}
       />
     </div>
   );

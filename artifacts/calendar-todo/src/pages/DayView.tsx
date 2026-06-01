@@ -16,6 +16,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useStore } from "@/lib/storage";
 import { fmt, parse, tasksForDate } from "@/lib/recurrence";
+import { setViewDate, resetViewDate } from "@/lib/viewDate";
 import { TaskRow } from "@/components/TaskRow";
 
 export default function DayView() {
@@ -50,6 +51,12 @@ export default function DayView() {
   }, []);
 
   const dateStr = fmt(selected);
+
+  useEffect(() => {
+    setViewDate(dateStr);
+    return () => resetViewDate();
+  }, [dateStr]);
+
   const dayTasks = useMemo(() => tasksForDate(tasks, dateStr), [tasks, dateStr]);
 
   const completionFor = (taskId: string) =>
