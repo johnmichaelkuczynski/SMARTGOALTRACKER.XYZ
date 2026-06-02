@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   addMonths,
+  differenceInDays,
   endOfMonth,
   endOfWeek,
   format,
@@ -12,12 +13,15 @@ import {
   startOfWeek,
 } from "date-fns";
 import { AnimatePresence } from "framer-motion";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Target } from "lucide-react";
+import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
+import { Progress } from "@/components/ui/progress";
 import { useStore } from "@/lib/storage";
 import { fmt, parse, tasksForDate } from "@/lib/recurrence";
 import { setViewDate, resetViewDate } from "@/lib/viewDate";
 import { TaskRow } from "@/components/TaskRow";
+import type { Task } from "@/lib/types";
 
 export default function DayView() {
   const [selected, setSelected] = useState(() => new Date());
@@ -71,8 +75,20 @@ export default function DayView() {
   );
   const dayRate = dayTasks.length ? credit / dayTasks.length : 0;
 
+  const todayStr = fmt(new Date());
+  const goals = useMemo(() => {
+    const list = tasks.filter(
+      (t) => !t.archived && (t.timeframe === "medium" || t.timeframe === "long"),
+    );
+    const now = parse(todayStr);
+    return list
+      .map((t) => ({ task: t, daysLeft: differenceInDays(parse(t.date), now) }))
+      .sort((a, b) => a.daysLeft - b.daysLeft)
+      .slice(0, 7);
+  }, [tasks, todayStr]);
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[260px_1fr] gap-8">
+    <div className="grid grid-cols-1 lg:grid-cols-[260px_minmax(0,1fr)] gap-8">
       <aside className="space-y-4">
         <MiniCalendar
           anchor={monthAnchor}
@@ -113,7 +129,7 @@ export default function DayView() {
           </div>
         </header>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <Column title="To do" count={todo.length}>
             <AnimatePresence mode="popLayout">
               {todo.length === 0 ? (
@@ -136,9 +152,71 @@ export default function DayView() {
               )}
             </AnimatePresence>
           </Column>
+          <GoalRail goals={goals} />
         </div>
       </section>
     </div>
+  );
+}
+
+function GoalRail({ goals }: { goals: { task: Task; daysLeft: number }[] }) {
+  return (
+    <div className="rounded-xl border border-card-border bg-primary/[0.04] p-4 min-h-[300px]">
+      <div className="flex items-center gap-2 mb-1">
+        <Target className="h-3.5 w-3.5 text-primary" />
+        <h3 className="text-xs uppercase tracking-widest text-muted-foreground">Keeping sight of</h3>
+      </div>
+      <p className="text-[11px] text-muted-foreground mb-3">
+        Your medium &amp; long-term goals — so the day serves the bigger picture.
+      </p>
+      {goals.length === 0 ? (
+        <div className="text-sm text-muted-foreground italic py-6 px-1 leading-snug">
+          No longer-term goals yet. Add a task with a medium or long time frame and it shows up here.
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          {goals.map(({ task, daysLeft }) => (
+            <GoalMini key={task.id} task={task} daysLeft={daysLeft} />
+          ))}
+          <Link
+            href="/goals"
+            className="block text-[11px] text-primary hover:underline pt-1"
+          >
+            See all goals →
+          </Link>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GoalMini({ task, daysLeft }: { task: Task; daysLeft: number }) {
+  const target = parse(task.date);
+  const created = new Date(task.createdAt);
+  const now = new Date();
+  const total = Math.max(1, differenceInDays(target, created));
+  const elapsed = Math.max(0, Math.min(total, differenceInDays(now, created)));
+  const pct = Math.round((elapsed / total) * 100);
+
+  return (
+    <Link
+      href="/goals"
+      className="block rounded-lg border border-card-border bg-card p-3 hover-elevate"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <h4 className="text-sm leading-snug text-foreground line-clamp-2">{task.title}</h4>
+        <span className="text-[9px] uppercase tracking-widest text-muted-foreground shrink-0 mt-0.5">
+          {task.timeframe}
+        </span>
+      </div>
+      <Progress value={pct} className="mt-2 h-1" />
+      <div className="flex items-baseline justify-between mt-1.5 text-[11px] text-muted-foreground">
+        <span>{format(target, "MMM d, yyyy")}</span>
+        <span className="font-mono">
+          {daysLeft >= 0 ? `${daysLeft}d left` : `${Math.abs(daysLeft)}d past`}
+        </span>
+      </div>
+    </Link>
   );
 }
 
