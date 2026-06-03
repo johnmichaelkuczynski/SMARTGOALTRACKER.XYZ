@@ -80,6 +80,35 @@ export function computeAnalytics(tasks: Task[], completions: Completion[]) {
   return { overall, byTimeframe, byImportance };
 }
 
+export interface GoalSnapshotData {
+  title: string;
+  notes?: string | null;
+  timeframe: Timeframe;
+  importance?: number | null;
+  done: number;
+  due: number;
+  rate: number;
+}
+
+/** Per-task snapshot (title + completion stats) for every active task — used by the psychological profile. */
+export function goalSnapshots(tasks: Task[], completions: Completion[]): GoalSnapshotData[] {
+  const today = startOfDay(new Date());
+  return tasks
+    .filter((t) => !t.archived)
+    .map((t) => {
+      const s = statsFor(t, completions, today);
+      return {
+        title: t.title,
+        notes: t.notes ?? null,
+        timeframe: t.timeframe,
+        importance: t.importance ?? null,
+        done: s.done,
+        due: s.due,
+        rate: s.rate,
+      };
+    });
+}
+
 export function dueByItems(tasks: Task[], completions: Completion[]) {
   const today = startOfDay(new Date());
   return tasks

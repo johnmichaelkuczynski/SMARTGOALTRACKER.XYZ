@@ -5,7 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { GoalSnapshot } from './goalSnapshot';
 
-export interface HealthStatus {
-  status: string;
+export interface PsychAnalysisInput {
+  goals: GoalSnapshot[];
 }

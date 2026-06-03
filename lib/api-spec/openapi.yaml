@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: psychology
+    description: Psychological goal-profile analytics and chat
 paths:
   /healthz:
     get:
@@ -24,6 +26,61 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /psychology/analysis:
+    post:
+      operationId: analyzePsychology
+      tags: [psychology]
+      summary: Build a psychological profile from the user's goals
+      description: >
+        Takes the user's goals (with per-goal completion stats) and returns a
+        psychological profile: goals grouped by their nature into categories,
+        each with an accurate completion rate, plus narrative traits and insights.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PsychAnalysisInput"
+      responses:
+        "200":
+          description: Analysis produced
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PsychAnalysis"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorMessage"
+  /psychology/chat:
+    post:
+      operationId: chatPsychology
+      tags: [psychology]
+      summary: Discuss the goal profile with the assistant
+      description: >
+        Answers the user's questions grounded in their goals, completion-by-category
+        data and profile. Supports hypotheticals such as proposing a new goal.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PsychChatInput"
+      responses:
+        "200":
+          description: Assistant reply
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PsychChatReply"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorMessage"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +90,149 @@ components:
           type: string
       required:
         - status
-
+    ApiErrorMessage:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+    GoalSnapshot:
+      type: object
+      description: A single goal plus its observed completion stats.
+      properties:
+        title:
+          type: string
+        notes:
+          type: ["string", "null"]
+        timeframe:
+          type: string
+          description: One of daily, medium, long.
+        importance:
+          type: ["integer", "null"]
+        done:
+          type: number
+          description: Credited completions (partial counts as 0.5).
+        due:
+          type: integer
+          description: Number of tracked occurrences that were due.
+        rate:
+          type: number
+          description: done / due, between 0 and 1.
+      required:
+        - title
+        - timeframe
+        - done
+        - due
+        - rate
+    PsychTrait:
+      type: object
+      properties:
+        label:
+          type: string
+        score:
+          type: integer
+          description: 0-100 strength of this trait.
+        note:
+          type: string
+      required:
+        - label
+        - score
+        - note
+    PsychCategory:
+      type: object
+      properties:
+        name:
+          type: string
+        blurb:
+          type: string
+        taskCount:
+          type: integer
+        done:
+          type: number
+        due:
+          type: integer
+        rate:
+          type: number
+      required:
+        - name
+        - blurb
+        - taskCount
+        - done
+        - due
+        - rate
+    PsychAnalysisInput:
+      type: object
+      properties:
+        goals:
+          type: array
+          items:
+            $ref: "#/components/schemas/GoalSnapshot"
+      required:
+        - goals
+    PsychAnalysis:
+      type: object
+      properties:
+        generatedAt:
+          type: string
+        headline:
+          type: string
+        summary:
+          type: string
+        traits:
+          type: array
+          items:
+            $ref: "#/components/schemas/PsychTrait"
+        categories:
+          type: array
+          items:
+            $ref: "#/components/schemas/PsychCategory"
+        insights:
+          type: array
+          items:
+            type: string
+      required:
+        - generatedAt
+        - headline
+        - summary
+        - traits
+        - categories
+        - insights
+    PsychChatMessage:
+      type: object
+      properties:
+        role:
+          type: string
+          description: user or assistant.
+        content:
+          type: string
+      required:
+        - role
+        - content
+    PsychChatInput:
+      type: object
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/PsychChatMessage"
+        goals:
+          type: array
+          items:
+            $ref: "#/components/schemas/GoalSnapshot"
+        categories:
+          type: array
+          items:
+            $ref: "#/components/schemas/PsychCategory"
+        profileSummary:
+          type: ["string", "null"]
+      required:
+        - messages
+        - goals
+    PsychChatReply:
+      type: object
+      properties:
+        reply:
+          type: string
+      required:
+        - reply

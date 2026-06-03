@@ -1,0 +1,1 @@
+- [Curl testing the dev server](dev-domain-curl.md) — `$REPLIT_DEV_DOMAIN` has no URL scheme; prefix `https://` or curl returns HTTP 000.
