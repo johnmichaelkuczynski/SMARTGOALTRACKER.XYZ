@@ -4,7 +4,7 @@ import { parse } from "@/lib/recurrence";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { deleteTask } from "@/lib/storage";
-import { Trash2 } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import type { Task } from "@/lib/types";
 
 export default function Goals() {
@@ -79,16 +79,28 @@ function GoalCard({ goal, completions }: { goal: Task; completions: ReturnType<t
             <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{goal.notes}</p>
           )}
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 opacity-0 group-hover:opacity-100"
-          onClick={() => {
-            if (confirm(`Delete "${goal.title}"?`)) deleteTask(goal.id);
-          }}
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
+        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => window.dispatchEvent(new CustomEvent("edit-task", { detail: goal.id }))}
+            aria-label="Edit"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            onClick={() => {
+              if (confirm(`Delete "${goal.title}"?`)) deleteTask(goal.id);
+            }}
+            aria-label="Delete"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
       <div className="flex items-baseline justify-between text-xs text-muted-foreground mt-3">
         <span>Target {format(target, "MMM d, yyyy")}</span>
