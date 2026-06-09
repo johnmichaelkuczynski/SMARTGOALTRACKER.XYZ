@@ -9,6 +9,7 @@ import Goals from "@/pages/Goals";
 import Analytics from "@/pages/Analytics";
 import Journal from "@/pages/Journal";
 import Mind from "@/pages/Mind";
+import Assistant from "@/pages/Assistant";
 import { AppLayout } from "@/components/AppLayout";
 
 const queryClient = new QueryClient();
@@ -23,6 +24,7 @@ function Router() {
         <Route path="/analytics" component={Analytics} />
         <Route path="/journal" component={Journal} />
         <Route path="/mind" component={Mind} />
+        <Route path="/assistant" component={Assistant} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>

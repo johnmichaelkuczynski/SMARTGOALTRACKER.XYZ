@@ -21,6 +21,8 @@ import type {
 
 import type {
   ApiErrorMessage,
+  AssistantChatInput,
+  AssistantChatReply,
   HealthStatus,
   PsychAnalysis,
   PsychAnalysisInput,
@@ -262,5 +264,78 @@ export const useChatPsychology = <TError = ErrorType<ApiErrorMessage>,
         TContext
       > => {
       return useMutation(getChatPsychologyMutationOptions(options));
+    }
+
+export const getChatAssistantUrl = () => {
+
+
+
+
+  return `/api/assistant/chat`
+}
+
+/**
+ * A general-purpose assistant that also receives the user's full app context — today's agenda, upcoming schedule, completion analytics, goals with per-goal follow-through, reflections and the psychological profile — and uses it to answer intelligently about what to do and the kind of person the data describes.
+
+ * @summary Converse with the app-aware assistant
+ */
+export const chatAssistant = async (assistantChatInput: AssistantChatInput, options?: RequestInit): Promise<AssistantChatReply> => {
+
+  return customFetch<AssistantChatReply>(getChatAssistantUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      assistantChatInput,)
+  }
+);}
+
+
+
+
+export const getChatAssistantMutationOptions = <TError = ErrorType<ApiErrorMessage>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof chatAssistant>>, TError,{data: BodyType<AssistantChatInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof chatAssistant>>, TError,{data: BodyType<AssistantChatInput>}, TContext> => {
+
+const mutationKey = ['chatAssistant'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof chatAssistant>>, {data: BodyType<AssistantChatInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  chatAssistant(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ChatAssistantMutationResult = NonNullable<Awaited<ReturnType<typeof chatAssistant>>>
+    export type ChatAssistantMutationBody = BodyType<AssistantChatInput>
+    export type ChatAssistantMutationError = ErrorType<ApiErrorMessage>
+
+    /**
+ * @summary Converse with the app-aware assistant
+ */
+export const useChatAssistant = <TError = ErrorType<ApiErrorMessage>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof chatAssistant>>, TError,{data: BodyType<AssistantChatInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof chatAssistant>>,
+        TError,
+        {data: BodyType<AssistantChatInput>},
+        TContext
+      > => {
+      return useMutation(getChatAssistantMutationOptions(options));
     }
 

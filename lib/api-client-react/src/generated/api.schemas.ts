@@ -92,3 +92,53 @@ export interface PsychChatReply {
   reply: string;
 }
 
+/**
+ * Aggregate follow-through over a slice of tasks.
+ */
+export interface StatSummary {
+  label: string;
+  done: number;
+  due: number;
+  rate: number;
+}
+
+/**
+ * A concrete scheduled occurrence on a specific date.
+ */
+export interface ScheduleItem {
+  title: string;
+  /** yyyy-MM-dd of this occurrence. */
+  date: string;
+  timeframe: string;
+  /** @nullable */
+  importance?: number | null;
+  /** done, partial, or pending. */
+  status: string;
+}
+
+/**
+ * A snapshot of everything the assistant knows about the user's app state.
+ */
+export interface AssistantContext {
+  /** Today's date, human readable. */
+  today: string;
+  overall?: StatSummary;
+  byTimeframe?: StatSummary[];
+  goals?: GoalSnapshot[];
+  categories?: PsychCategory[];
+  /** Today's and upcoming scheduled occurrences. */
+  schedule?: ScheduleItem[];
+  reflections?: ReflectionEntry[];
+  /** @nullable */
+  profileSummary?: string | null;
+}
+
+export interface AssistantChatInput {
+  messages: PsychChatMessage[];
+  context: AssistantContext;
+}
+
+export interface AssistantChatReply {
+  reply: string;
+}
+

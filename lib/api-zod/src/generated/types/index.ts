@@ -7,6 +7,9 @@
  */
 
 export * from './apiErrorMessage';
+export * from './assistantChatInput';
+export * from './assistantChatReply';
+export * from './assistantContext';
 export * from './goalSnapshot';
 export * from './healthStatus';
 export * from './psychAnalysis';
@@ -17,3 +20,5 @@ export * from './psychChatMessage';
 export * from './psychChatReply';
 export * from './psychTrait';
 export * from './reflectionEntry';
+export * from './scheduleItem';
+export * from './statSummary';

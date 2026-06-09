@@ -100,3 +100,65 @@ export const ChatPsychologyResponse = zod.object({
 })
 
 
+/**
+ * A general-purpose assistant that also receives the user's full app context — today's agenda, upcoming schedule, completion analytics, goals with per-goal follow-through, reflections and the psychological profile — and uses it to answer intelligently about what to do and the kind of person the data describes.
+
+ * @summary Converse with the app-aware assistant
+ */
+export const ChatAssistantBody = zod.object({
+  "messages": zod.array(zod.object({
+  "role": zod.string().describe('user or assistant.'),
+  "content": zod.string()
+})),
+  "context": zod.object({
+  "today": zod.string().describe('Today\'s date, human readable.'),
+  "overall": zod.object({
+  "label": zod.string(),
+  "done": zod.number(),
+  "due": zod.number(),
+  "rate": zod.number()
+}).optional().describe('Aggregate follow-through over a slice of tasks.'),
+  "byTimeframe": zod.array(zod.object({
+  "label": zod.string(),
+  "done": zod.number(),
+  "due": zod.number(),
+  "rate": zod.number()
+}).describe('Aggregate follow-through over a slice of tasks.')).optional(),
+  "goals": zod.array(zod.object({
+  "title": zod.string(),
+  "notes": zod.string().nullish(),
+  "timeframe": zod.string().describe('One of daily, medium, long.'),
+  "importance": zod.number().nullish(),
+  "done": zod.number().describe('Credited completions (partial counts as 0.5).'),
+  "due": zod.number().describe('Number of tracked occurrences that were due.'),
+  "rate": zod.number().describe('done \/ due, between 0 and 1.')
+}).describe('A single goal plus its observed completion stats.')).optional(),
+  "categories": zod.array(zod.object({
+  "name": zod.string(),
+  "blurb": zod.string(),
+  "taskCount": zod.number(),
+  "done": zod.number(),
+  "due": zod.number(),
+  "rate": zod.number()
+})).optional(),
+  "schedule": zod.array(zod.object({
+  "title": zod.string(),
+  "date": zod.string().describe('yyyy-MM-dd of this occurrence.'),
+  "timeframe": zod.string(),
+  "importance": zod.number().nullish(),
+  "status": zod.string().describe('done, partial, or pending.')
+}).describe('A concrete scheduled occurrence on a specific date.')).optional().describe('Today\'s and upcoming scheduled occurrences.'),
+  "reflections": zod.array(zod.object({
+  "period": zod.string().describe('One of day, week, month, year.'),
+  "label": zod.string().describe('Human-readable period label, e.g. \"Monday, June 9, 2026\" or \"May 2026\".'),
+  "text": zod.string().describe('What the user reported actually accomplishing in that period.')
+})).optional(),
+  "profileSummary": zod.string().nullish()
+}).describe('A snapshot of everything the assistant knows about the user\'s app state.')
+})
+
+export const ChatAssistantResponse = zod.object({
+  "reply": zod.string()
+})
+
+

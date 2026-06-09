@@ -12,6 +12,8 @@ tags:
     description: Health operations
   - name: psychology
     description: Psychological goal-profile analytics and chat
+  - name: assistant
+    description: App-aware general-purpose conversational assistant
 paths:
   /healthz:
     get:
@@ -75,6 +77,35 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/PsychChatReply"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorMessage"
+  /assistant/chat:
+    post:
+      operationId: chatAssistant
+      tags: [assistant]
+      summary: Converse with the app-aware assistant
+      description: >
+        A general-purpose assistant that also receives the user's full app context —
+        today's agenda, upcoming schedule, completion analytics, goals with per-goal
+        follow-through, reflections and the psychological profile — and uses it to
+        answer intelligently about what to do and the kind of person the data describes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssistantChatInput"
+      responses:
+        "200":
+          description: Assistant reply
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantChatReply"
         "400":
           description: Invalid request
           content:
@@ -256,6 +287,97 @@ components:
         - messages
         - goals
     PsychChatReply:
+      type: object
+      properties:
+        reply:
+          type: string
+      required:
+        - reply
+    StatSummary:
+      type: object
+      description: Aggregate follow-through over a slice of tasks.
+      properties:
+        label:
+          type: string
+        done:
+          type: number
+        due:
+          type: integer
+        rate:
+          type: number
+      required:
+        - label
+        - done
+        - due
+        - rate
+    ScheduleItem:
+      type: object
+      description: A concrete scheduled occurrence on a specific date.
+      properties:
+        title:
+          type: string
+        date:
+          type: string
+          description: yyyy-MM-dd of this occurrence.
+        timeframe:
+          type: string
+        importance:
+          type: ["integer", "null"]
+        status:
+          type: string
+          description: done, partial, or pending.
+      required:
+        - title
+        - date
+        - timeframe
+        - status
+    AssistantContext:
+      type: object
+      description: A snapshot of everything the assistant knows about the user's app state.
+      properties:
+        today:
+          type: string
+          description: Today's date, human readable.
+        overall:
+          $ref: "#/components/schemas/StatSummary"
+        byTimeframe:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatSummary"
+        goals:
+          type: array
+          items:
+            $ref: "#/components/schemas/GoalSnapshot"
+        categories:
+          type: array
+          items:
+            $ref: "#/components/schemas/PsychCategory"
+        schedule:
+          type: array
+          description: Today's and upcoming scheduled occurrences.
+          items:
+            $ref: "#/components/schemas/ScheduleItem"
+        reflections:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReflectionEntry"
+        profileSummary:
+          type: ["string", "null"]
+      required:
+        - today
+    AssistantChatInput:
+      type: object
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/PsychChatMessage"
+        context:
+          $ref: "#/components/schemas/AssistantContext"
+      required:
+        - messages
+        - context
+    AssistantChatReply:
       type: object
       properties:
         reply:
