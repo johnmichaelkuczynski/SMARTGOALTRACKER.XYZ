@@ -8,11 +8,14 @@
 import type { GoalSnapshot } from './goalSnapshot';
 import type { PsychCategory } from './psychCategory';
 import type { PsychChatMessage } from './psychChatMessage';
+import type { ReflectionEntry } from './reflectionEntry';
 
 export interface PsychChatInput {
   messages: PsychChatMessage[];
   goals: GoalSnapshot[];
   categories?: PsychCategory[];
+  /** The user's own free-text accounts of what they accomplished, by period. */
+  reflections?: ReflectionEntry[];
   /** @nullable */
   profileSummary?: string | null;
 }

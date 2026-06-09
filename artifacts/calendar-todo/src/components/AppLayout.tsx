@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, ListTodo, Target, BarChart3, Brain, Plus } from "lucide-react";
+import { CalendarDays, ListTodo, Target, BarChart3, BookOpen, Brain, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { computeAnalytics } from "@/lib/analytics";
 import { useStore } from "@/lib/storage";
@@ -13,6 +13,7 @@ const NAV = [
   { href: "/upcoming", label: "Due by", icon: ListTodo },
   { href: "/goals", label: "Goals", icon: Target },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
+  { href: "/journal", label: "Journal", icon: BookOpen },
   { href: "/mind", label: "Mind", icon: Brain },
 ];
 

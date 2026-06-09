@@ -30,14 +30,31 @@ type Category = {
   rate: number;
 };
 
+type Reflection = {
+  period: string;
+  label: string;
+  text: string;
+};
+
+/** Render the user's own accounts of what they accomplished, most recent first, capped to keep prompts bounded. */
+function reflectionLines(reflections: Reflection[] | undefined): string {
+  if (!reflections || reflections.length === 0) return "";
+  const capped = reflections.slice(0, 40);
+  const body = capped
+    .map((r) => `(${r.period}) ${r.label}:\n${r.text}`)
+    .join("\n\n");
+  return body;
+}
+
 const ANALYSIS_SYSTEM = `You are the reflective "mind" of a goal-tracking app called Goal Tracker, whose ethos is honest follow-through.
 You read the goals a person sets for themselves — and, crucially, how reliably they actually follow through on each kind — and you build a candid psychological portrait of them on that basis alone.
 
 Principles:
 - Profile the PERSON from the NATURE of their goals plus their completion behaviour by category. Two people with identical completion rates but different goal content should get different portraits.
-- Be insightful, specific and honest — not flattering, not a horoscope. Earn trust by noticing real patterns (e.g. "you commit hardest to physical goals but let learning goals slip").
-- You are NOT a clinician. Give no medical or psychiatric diagnoses. If goals touch on risky or self-destructive behaviour, treat it soberly and without moralising lectures, but do let it inform the portrait honestly.
-- Ground every claim in the actual goals/stats provided. Never invent goals.
+- You may also be given the user's OWN reflections — free-text accounts of what they actually accomplished each day/week/month/year. These are first-person truth and often matter MORE than the checkbox stats: what someone chooses to record, celebrate, or confess reveals who they are. What they report doing may diverge from what they set out to do — notice that gap explicitly and let it shape the portrait.
+- Be insightful, specific and honest — not flattering, not a horoscope. Earn trust by noticing real patterns (e.g. "you commit hardest to physical goals but let learning goals slip", or "your goals are all career, but your reflections are all about people").
+- You are NOT a clinician. Give no medical or psychiatric diagnoses. If goals or reflections touch on risky or self-destructive behaviour, treat it soberly and without moralising lectures, but do let it inform the portrait honestly.
+- Ground every claim in the actual goals, stats, and reflections provided. Never invent goals or accomplishments.
 
 Group the goals into a small set (2-6) of meaningful categories by their nature (e.g. Fitness & Body, Career & Craft, Learning, Health & Habits, Relationships, Creative, Mind & Meaning, Admin). Assign every goal to exactly one category by its index.
 
@@ -75,19 +92,29 @@ router.post("/psychology/analysis", async (req, res): Promise<void> => {
   }
 
   const goals = parsed.data.goals as GoalSnapshot[];
-  if (goals.length === 0) {
+  const reflections = parsed.data.reflections as Reflection[] | undefined;
+  if (goals.length === 0 && (!reflections || reflections.length === 0)) {
     res.json(AnalyzePsychologyResponse.parse(emptyAnalysis()));
     return;
   }
 
-  const goalLines = goals
-    .map((g, i) => {
-      const imp = g.importance != null ? `, importance ${g.importance}/10` : "";
-      const note = g.notes ? ` — note: ${g.notes}` : "";
-      const rate = g.due > 0 ? `${Math.round(g.rate * 100)}%` : "no tracked occurrences yet";
-      return `[${i}] "${g.title}" (${g.timeframe}${imp}) — follow-through ${rate} (${g.done}/${g.due})${note}`;
-    })
-    .join("\n");
+  const goalLines = goals.length
+    ? goals
+        .map((g, i) => {
+          const imp = g.importance != null ? `, importance ${g.importance}/10` : "";
+          const note = g.notes ? ` — note: ${g.notes}` : "";
+          const rate = g.due > 0 ? `${Math.round(g.rate * 100)}%` : "no tracked occurrences yet";
+          return `[${i}] "${g.title}" (${g.timeframe}${imp}) — follow-through ${rate} (${g.done}/${g.due})${note}`;
+        })
+        .join("\n")
+    : "(no explicit goals set)";
+
+  const reflectionBlock = reflectionLines(reflections);
+  const userContent = `Here are my goals and how reliably I follow through on each:\n\n${goalLines}${
+    reflectionBlock
+      ? `\n\nAnd here, in my own words, is what I actually accomplished in each period (this may diverge from the goals above):\n\n${reflectionBlock}`
+      : ""
+  }\n\nProfile me.`;
 
   try {
     const completion = await openai.chat.completions.create({
@@ -95,10 +122,7 @@ router.post("/psychology/analysis", async (req, res): Promise<void> => {
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: ANALYSIS_SYSTEM },
-        {
-          role: "user",
-          content: `Here are my goals and how reliably I follow through on each:\n\n${goalLines}\n\nProfile me.`,
-        },
+        { role: "user", content: userContent },
       ],
     });
 
@@ -185,11 +209,14 @@ You have access to their goals, their completion rate per goal-category, and a s
 
 Voice: candid, perceptive, warm but unsparing — a sharp friend who tells the truth, not a flatterer or a therapist. Keep replies tight (a few sentences, occasionally a short list). No clinical diagnoses.
 
+You may also have their REFLECTIONS — free-text accounts, in their own words, of what they actually accomplished each day/week/month/year. Treat these as first-person truth that often reveals more than the stats, and note honestly where what they did diverges from what they set out to do.
+
 You can and should:
 - Point out patterns linking the KIND of goal to how reliably they finish it.
-- Answer "what does this say about me?" honestly, grounded in the data.
+- Answer "what does this say about me?" honestly, grounded in the data and their reflections.
+- Weigh their reflections heavily: reference what they actually reported doing, and surface gaps between intention and action.
 - Handle hypotheticals: if they propose a new goal (e.g. "what if I set jogging six miles today?"), reason from their track record in that category about how likely they are to follow through and what would help.
-Never invent goals or stats you weren't given. If there isn't enough data, say so plainly.`;
+Never invent goals, stats, or accomplishments you weren't given. If there isn't enough data, say so plainly.`;
 
 router.post("/psychology/chat", async (req, res): Promise<void> => {
   const parsed = ChatPsychologyBody.safeParse(req.body);
@@ -199,11 +226,12 @@ router.post("/psychology/chat", async (req, res): Promise<void> => {
     return;
   }
 
-  const { messages, goals, categories, profileSummary } = parsed.data as {
+  const { messages, goals, categories, profileSummary, reflections } = parsed.data as {
     messages: { role: string; content: string }[];
     goals: GoalSnapshot[];
     categories?: Category[];
     profileSummary?: string | null;
+    reflections?: Reflection[];
   };
 
   const goalLines = goals.length
@@ -224,7 +252,10 @@ router.post("/psychology/chat", async (req, res): Promise<void> => {
         .join("\n")
     : "(no category breakdown yet)";
 
-  const context = `THE USER'S GOALS:\n${goalLines}\n\nFOLLOW-THROUGH BY CATEGORY:\n${catLines}\n\nPROFILE SUMMARY:\n${profileSummary || "(none yet)"}`;
+  const reflectionBlock = reflectionLines(reflections);
+  const context = `THE USER'S GOALS:\n${goalLines}\n\nFOLLOW-THROUGH BY CATEGORY:\n${catLines}\n\nPROFILE SUMMARY:\n${profileSummary || "(none yet)"}${
+    reflectionBlock ? `\n\nTHE USER'S OWN REFLECTIONS (what they actually did):\n${reflectionBlock}` : ""
+  }`;
 
   const convo = messages
     .filter((m) => m.role === "user" || m.role === "assistant")

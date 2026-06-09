@@ -31,7 +31,12 @@ export const AnalyzePsychologyBody = zod.object({
   "done": zod.number().describe('Credited completions (partial counts as 0.5).'),
   "due": zod.number().describe('Number of tracked occurrences that were due.'),
   "rate": zod.number().describe('done \/ due, between 0 and 1.')
-}).describe('A single goal plus its observed completion stats.'))
+}).describe('A single goal plus its observed completion stats.')),
+  "reflections": zod.array(zod.object({
+  "period": zod.string().describe('One of day, week, month, year.'),
+  "label": zod.string().describe('Human-readable period label, e.g. \"Monday, June 9, 2026\" or \"May 2026\".'),
+  "text": zod.string().describe('What the user reported actually accomplishing in that period.')
+})).optional().describe('The user\'s own free-text accounts of what they accomplished, by period.')
 })
 
 export const AnalyzePsychologyResponse = zod.object({
@@ -82,6 +87,11 @@ export const ChatPsychologyBody = zod.object({
   "due": zod.number(),
   "rate": zod.number()
 })).optional(),
+  "reflections": zod.array(zod.object({
+  "period": zod.string().describe('One of day, week, month, year.'),
+  "label": zod.string().describe('Human-readable period label, e.g. \"Monday, June 9, 2026\" or \"May 2026\".'),
+  "text": zod.string().describe('What the user reported actually accomplishing in that period.')
+})).optional().describe('The user\'s own free-text accounts of what they accomplished, by period.'),
   "profileSummary": zod.string().nullish()
 })
 

@@ -48,8 +48,19 @@ export interface PsychCategory {
   rate: number;
 }
 
+export interface ReflectionEntry {
+  /** One of day, week, month, year. */
+  period: string;
+  /** Human-readable period label, e.g. "Monday, June 9, 2026" or "May 2026". */
+  label: string;
+  /** What the user reported actually accomplishing in that period. */
+  text: string;
+}
+
 export interface PsychAnalysisInput {
   goals: GoalSnapshot[];
+  /** The user's own free-text accounts of what they accomplished, by period. */
+  reflections?: ReflectionEntry[];
 }
 
 export interface PsychAnalysis {
@@ -71,6 +82,8 @@ export interface PsychChatInput {
   messages: PsychChatMessage[];
   goals: GoalSnapshot[];
   categories?: PsychCategory[];
+  /** The user's own free-text accounts of what they accomplished, by period. */
+  reflections?: ReflectionEntry[];
   /** @nullable */
   profileSummary?: string | null;
 }

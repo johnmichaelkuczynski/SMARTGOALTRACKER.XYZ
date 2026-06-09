@@ -7,6 +7,7 @@ import DayView from "@/pages/DayView";
 import Upcoming from "@/pages/Upcoming";
 import Goals from "@/pages/Goals";
 import Analytics from "@/pages/Analytics";
+import Journal from "@/pages/Journal";
 import Mind from "@/pages/Mind";
 import { AppLayout } from "@/components/AppLayout";
 
@@ -20,6 +21,7 @@ function Router() {
         <Route path="/upcoming" component={Upcoming} />
         <Route path="/goals" component={Goals} />
         <Route path="/analytics" component={Analytics} />
+        <Route path="/journal" component={Journal} />
         <Route path="/mind" component={Mind} />
         <Route component={NotFound} />
       </Switch>

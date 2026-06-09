@@ -9,6 +9,7 @@ import {
 } from "@workspace/api-client-react";
 import { useStore } from "@/lib/storage";
 import { goalSnapshots } from "@/lib/analytics";
+import { periodLabel, keyToDate } from "@/lib/periods";
 import { Button } from "@/components/ui/button";
 
 const ANALYSIS_KEY = "tally:psych:v1";
@@ -33,10 +34,23 @@ function loadChat(): PsychChatMessage[] {
 }
 
 export default function Mind() {
-  const { tasks, completions } = useStore();
+  const { tasks, completions, journal } = useStore();
   const goals = useMemo<GoalSnapshot[]>(
     () => goalSnapshots(tasks, completions),
     [tasks, completions],
+  );
+
+  const reflections = useMemo(
+    () =>
+      [...journal]
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        .slice(0, 30)
+        .map((e) => ({
+          period: e.period,
+          label: periodLabel(e.period, keyToDate(e.period, e.periodKey)),
+          text: e.text,
+        })),
+    [journal],
   );
 
   const [analysis, setAnalysis] = useState<PsychAnalysis | null>(() => loadAnalysis());
@@ -59,11 +73,13 @@ export default function Mind() {
   }, [chat, sendChat.isPending]);
 
   const hasGoals = goals.length > 0;
+  const hasReflections = reflections.length > 0;
+  const canAnalyze = hasGoals || hasReflections;
 
   async function runAnalysis() {
     setError(null);
     try {
-      const result = await analyze.mutateAsync({ data: { goals } });
+      const result = await analyze.mutateAsync({ data: { goals, reflections } });
       setAnalysis(result);
     } catch {
       setError("Could not build your profile right now. Try again in a moment.");
@@ -85,6 +101,7 @@ export default function Mind() {
           goals,
           categories: analysis?.categories,
           profileSummary: analysis?.summary ?? null,
+          reflections,
         },
       });
       setChat([...next, { role: "assistant", content: result.reply }]);
@@ -108,7 +125,7 @@ export default function Mind() {
           variant={analysis ? "outline" : "default"}
           size="sm"
           onClick={runAnalysis}
-          disabled={!hasGoals || analyze.isPending}
+          disabled={!canAnalyze || analyze.isPending}
           className="shrink-0"
         >
           {analyze.isPending ? (
@@ -133,20 +150,21 @@ export default function Mind() {
         </div>
       )}
 
-      {!hasGoals && (
+      {!canAnalyze && (
         <div className="rounded-xl border border-card-border bg-card p-8 text-center">
           <p className="text-muted-foreground">
-            Add a few goals first. Once you have some, come back and I'll tell you what they say about you.
+            Add a few goals or write a journal entry first. Once you have either, come back and I'll
+            tell you what they say about you.
           </p>
         </div>
       )}
 
-      {hasGoals && !analysis && !analyze.isPending && (
+      {canAnalyze && !analysis && !analyze.isPending && (
         <div className="rounded-xl border border-card-border bg-card p-8 text-center">
           <Brain className="size-7 mx-auto text-muted-foreground" />
           <p className="text-muted-foreground mt-3 max-w-md mx-auto">
-            I'll look at the nature of your goals and how reliably you hit them, then describe the
-            person behind the list. Nothing is saved to a server.
+            I'll look at the nature of your goals, how reliably you hit them, and what you've written
+            you actually did, then describe the person behind it all. Nothing is saved to a server.
           </p>
         </div>
       )}

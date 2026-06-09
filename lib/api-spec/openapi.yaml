@@ -161,6 +161,22 @@ components:
         - done
         - due
         - rate
+    ReflectionEntry:
+      type: object
+      properties:
+        period:
+          type: string
+          description: One of day, week, month, year.
+        label:
+          type: string
+          description: Human-readable period label, e.g. "Monday, June 9, 2026" or "May 2026".
+        text:
+          type: string
+          description: What the user reported actually accomplishing in that period.
+      required:
+        - period
+        - label
+        - text
     PsychAnalysisInput:
       type: object
       properties:
@@ -168,6 +184,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/GoalSnapshot"
+        reflections:
+          type: array
+          description: The user's own free-text accounts of what they accomplished, by period.
+          items:
+            $ref: "#/components/schemas/ReflectionEntry"
       required:
         - goals
     PsychAnalysis:
@@ -224,6 +245,11 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PsychCategory"
+        reflections:
+          type: array
+          description: The user's own free-text accounts of what they accomplished, by period.
+          items:
+            $ref: "#/components/schemas/ReflectionEntry"
         profileSummary:
           type: ["string", "null"]
       required:

@@ -6,7 +6,10 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { GoalSnapshot } from './goalSnapshot';
+import type { ReflectionEntry } from './reflectionEntry';
 
 export interface PsychAnalysisInput {
   goals: GoalSnapshot[];
+  /** The user's own free-text accounts of what they accomplished, by period. */
+  reflections?: ReflectionEntry[];
 }

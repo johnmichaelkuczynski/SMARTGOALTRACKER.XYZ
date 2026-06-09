@@ -1,5 +1,12 @@
 import { useSyncExternalStore } from "react";
-import type { Completion, CompletionStatus, StoreState, Task } from "./types";
+import type {
+  Completion,
+  CompletionStatus,
+  JournalEntry,
+  JournalPeriod,
+  StoreState,
+  Task,
+} from "./types";
 import { seedData } from "./seed";
 
 const KEY = "tally:v1";
@@ -15,6 +22,7 @@ function load(): StoreState {
     const parsed = JSON.parse(raw) as StoreState;
     if (!parsed.tasks) parsed.tasks = [];
     if (!parsed.completions) parsed.completions = [];
+    if (!parsed.journal) parsed.journal = [];
     return parsed;
   } catch {
     const seeded = seedData();
@@ -22,7 +30,10 @@ function load(): StoreState {
   }
 }
 
-let state: StoreState = typeof window !== "undefined" ? load() : { tasks: [], completions: [], seeded: false };
+let state: StoreState =
+  typeof window !== "undefined"
+    ? load()
+    : { tasks: [], completions: [], journal: [], seeded: false };
 const listeners = new Set<() => void>();
 
 function persist() {
@@ -137,8 +148,28 @@ export function isCompleted(taskId: string, date: string): boolean {
   return state.completions.some((c) => c.taskId === taskId && c.date === date);
 }
 
+export function getJournalEntry(
+  period: JournalPeriod,
+  periodKey: string,
+): JournalEntry | undefined {
+  return state.journal.find((e) => e.period === period && e.periodKey === periodKey);
+}
+
+/** Upsert a reflection. Empty text removes the entry. */
+export function setJournalEntry(period: JournalPeriod, periodKey: string, text: string) {
+  const trimmed = text.trim();
+  const rest = state.journal.filter((e) => !(e.period === period && e.periodKey === periodKey));
+  state = {
+    ...state,
+    journal: trimmed
+      ? [...rest, { period, periodKey, text: trimmed, updatedAt: new Date().toISOString() }]
+      : rest,
+  };
+  persist();
+}
+
 export function clearAll() {
-  state = { tasks: [], completions: [], seeded: true };
+  state = { tasks: [], completions: [], journal: [], seeded: true };
   persist();
 }
 

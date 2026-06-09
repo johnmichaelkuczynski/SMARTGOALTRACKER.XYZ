@@ -16,3 +16,4 @@ export * from './psychChatInput';
 export * from './psychChatMessage';
 export * from './psychChatReply';
 export * from './psychTrait';
+export * from './reflectionEntry';

@@ -77,5 +77,14 @@ export function seedData(): StoreState {
     { taskId: "seed-6", date: f(addDays(today, -7)), completedAt: now },
   ];
 
-  return { tasks, completions, seeded: true };
+  const journal = [
+    {
+      period: "day" as const,
+      periodKey: f(addDays(today, -1)),
+      text: "Got the morning walk in and read a chapter. Spent most of the afternoon on the conference abstract instead of the article — felt productive but I keep avoiding the harder writing.",
+      updatedAt: now,
+    },
+  ];
+
+  return { tasks, completions, journal, seeded: true };
 }

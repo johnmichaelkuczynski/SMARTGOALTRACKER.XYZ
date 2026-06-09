@@ -30,8 +30,19 @@ export interface Completion {
   comment?: string;
 }
 
+export type JournalPeriod = "day" | "week" | "month" | "year";
+
+export interface JournalEntry {
+  period: JournalPeriod;
+  /** Stable key identifying the period, e.g. "2026-06-09" (day), "W:2026-06-07" (week), "2026-06" (month), "2026" (year). */
+  periodKey: string;
+  text: string;
+  updatedAt: string;
+}
+
 export interface StoreState {
   tasks: Task[];
   completions: Completion[];
+  journal: JournalEntry[];
   seeded: boolean;
 }
