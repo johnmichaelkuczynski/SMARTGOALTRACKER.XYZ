@@ -14,6 +14,12 @@ tags:
     description: Psychological goal-profile analytics and chat
   - name: assistant
     description: App-aware general-purpose conversational assistant
+  - name: state
+    description: Per-user application state synced across devices
+  - name: documents
+    description: User-uploaded reference documents
+  - name: storage
+    description: Object storage upload URLs
 paths:
   /healthz:
     get:
@@ -108,6 +114,146 @@ paths:
                 $ref: "#/components/schemas/AssistantChatReply"
         "400":
           description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorMessage"
+  /state:
+    get:
+      operationId: getState
+      tags: [state]
+      summary: Load the signed-in user's synced app state
+      responses:
+        "200":
+          description: The user's state document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StateResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorMessage"
+    put:
+      operationId: saveState
+      tags: [state]
+      summary: Save the signed-in user's synced app state
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveStateInput"
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StateResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorMessage"
+  /documents:
+    get:
+      operationId: listDocuments
+      tags: [documents]
+      summary: List the signed-in user's uploaded documents
+      responses:
+        "200":
+          description: The user's documents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentList"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorMessage"
+    post:
+      operationId: registerDocument
+      tags: [documents]
+      summary: Register an uploaded document and extract its text
+      description: >
+        Called after a file is uploaded to object storage. The server downloads
+        it, extracts readable text (txt, pdf, docx), and stores the document so
+        the assistant can reference it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterDocumentInput"
+      responses:
+        "200":
+          description: Registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentMeta"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorMessage"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorMessage"
+  /documents/{id}:
+    delete:
+      operationId: deleteDocument
+      tags: [documents]
+      summary: Delete one of the signed-in user's documents
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResult"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorMessage"
+  /storage/uploads/request-url:
+    post:
+      operationId: requestUploadUrl
+      tags: [storage]
+      summary: Request a presigned URL to upload a file directly to object storage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestUploadUrlInput"
+      responses:
+        "200":
+          description: Presigned upload URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadUrlResult"
+        "401":
+          description: Unauthorized
           content:
             application/json:
               schema:
@@ -361,10 +507,26 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ReflectionEntry"
+        documents:
+          type: array
+          description: The user's uploaded reference documents (name + extracted text).
+          items:
+            $ref: "#/components/schemas/AssistantDocument"
         profileSummary:
           type: ["string", "null"]
       required:
         - today
+    AssistantDocument:
+      type: object
+      properties:
+        name:
+          type: string
+        text:
+          type: string
+          description: Extracted text content of the document (may be truncated).
+      required:
+        - name
+        - text
     AssistantChatInput:
       type: object
       properties:
@@ -384,3 +546,103 @@ components:
           type: string
       required:
         - reply
+    StateResponse:
+      type: object
+      description: The user's synced app-state document.
+      properties:
+        data:
+          type: ["object", "null"]
+          additionalProperties: true
+          description: Opaque app-state blob, or null if the user has none yet.
+        updatedAt:
+          type: ["string", "null"]
+      required:
+        - data
+        - updatedAt
+    SaveStateInput:
+      type: object
+      properties:
+        data:
+          type: object
+          additionalProperties: true
+          description: Opaque app-state blob to persist for this user.
+      required:
+        - data
+    DocumentMeta:
+      type: object
+      description: Metadata about an uploaded document.
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        contentType:
+          type: string
+        size:
+          type: integer
+        charCount:
+          type: integer
+          description: Number of characters of text extracted from the document.
+        createdAt:
+          type: string
+      required:
+        - id
+        - name
+        - contentType
+        - size
+        - charCount
+        - createdAt
+    DocumentList:
+      type: object
+      properties:
+        documents:
+          type: array
+          items:
+            $ref: "#/components/schemas/DocumentMeta"
+      required:
+        - documents
+    RegisterDocumentInput:
+      type: object
+      properties:
+        name:
+          type: string
+        contentType:
+          type: string
+        size:
+          type: integer
+        objectPath:
+          type: string
+          description: The /objects/... path returned by the upload step.
+      required:
+        - name
+        - contentType
+        - objectPath
+    DeleteResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+      required:
+        - success
+    RequestUploadUrlInput:
+      type: object
+      properties:
+        name:
+          type: string
+        size:
+          type: integer
+        contentType:
+          type: string
+      required:
+        - name
+        - contentType
+    UploadUrlResult:
+      type: object
+      properties:
+        uploadURL:
+          type: string
+        objectPath:
+          type: string
+      required:
+        - uploadURL
+        - objectPath

@@ -34,7 +34,7 @@ const SUGGESTIONS = [
   "Given my track record, what should I focus on today?",
   "What kind of person do my goals and follow-through say I am?",
   "Which goals am I most likely to drop, and why?",
-  "Should I take on a new daily habit right now?",
+  "Summarize the documents I've uploaded and how they relate to my goals.",
 ];
 
 export default function Assistant() {

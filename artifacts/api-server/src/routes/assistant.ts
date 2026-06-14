@@ -1,5 +1,7 @@
 import { Router, type IRouter } from "express";
+import { eq } from "drizzle-orm";
 import { openai } from "@workspace/integrations-openai-ai-server";
+import { db, documentsTable } from "@workspace/db";
 import { ChatAssistantBody, ChatAssistantResponse } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -36,17 +38,22 @@ type AssistantContext = {
   profileSummary?: string | null;
 };
 
+type UserDocument = { name: string; text: string };
+
 const MAX_TURNS = 24;
 const MAX_NOTE = 400;
 const MAX_REFLECTION = 1200;
 const MAX_SUMMARY = 2000;
+const MAX_DOCS = 12;
+const MAX_DOC_CHARS = 6000;
+const MAX_DOCS_TOTAL_CHARS = 40_000;
 
 const pct = (rate: number, due: number) => (due > 0 ? `${Math.round(rate * 100)}%` : "untracked");
 
 const cap = (s: string, n: number) => (s.length > n ? s.slice(0, n) + "…" : s);
 
 /** Assemble the full app-state context the model reasons over. Each section is bounded to keep the prompt sane. */
-function buildContext(ctx: AssistantContext): string {
+function buildContext(ctx: AssistantContext, docs: UserDocument[] = []): string {
   const parts: string[] = [];
   parts.push(`TODAY: ${ctx.today ?? "(unknown)"}`);
 
@@ -113,6 +120,21 @@ function buildContext(ctx: AssistantContext): string {
     );
   }
 
+  if (docs.length) {
+    let budget = MAX_DOCS_TOTAL_CHARS;
+    const lines: string[] = [];
+    for (const d of docs.slice(0, MAX_DOCS)) {
+      if (budget <= 0) break;
+      const allowance = Math.min(MAX_DOC_CHARS, budget);
+      const body = cap(d.text.trim(), allowance);
+      budget -= body.length;
+      lines.push(`### DOCUMENT: ${d.name}\n${body || "(no readable text extracted)"}`);
+    }
+    parts.push(
+      `DOCUMENTS THE USER UPLOADED (you can read and reference these directly):\n\n${lines.join("\n\n")}`,
+    );
+  }
+
   return parts.join("\n\n");
 }
 
@@ -127,6 +149,7 @@ How to use the context:
 - When they ask "what kind of person am I / what does this say about me", answer candidly and specifically from the data: completion rates by category, the gap between what they schedule and what they finish, what their reflections reveal. Be perceptive and truthful, warm but unsparing — a sharp friend, not a flatterer or a therapist.
 - Notice and name patterns: procrastination on certain categories, over-scheduling, importance vs. follow-through mismatches, intention-vs-action gaps between goals and reflections.
 - For general/off-topic questions, just answer well; weave in their context only if relevant.
+- If the user has uploaded documents, their extracted text is provided below. Read and reference them directly when relevant — quote, summarise, or answer questions from their contents. If a document was uploaded but no readable text could be extracted, say so honestly rather than guessing.
 
 Rules:
 - Never invent goals, tasks, stats, or completions you weren't given. If the data doesn't support a claim, say so plainly.
@@ -146,7 +169,21 @@ router.post("/assistant/chat", async (req, res): Promise<void> => {
     context: AssistantContext;
   };
 
-  const contextBlock = buildContext(context);
+  let docs: UserDocument[] = [];
+  const userId = req.userId;
+  if (userId) {
+    try {
+      const rows = await db
+        .select({ name: documentsTable.name, text: documentsTable.extractedText })
+        .from(documentsTable)
+        .where(eq(documentsTable.userId, userId));
+      docs = rows.map((r) => ({ name: r.name, text: r.text }));
+    } catch (err) {
+      req.log.warn({ err }, "Failed to load user documents for assistant context");
+    }
+  }
+
+  const contextBlock = buildContext(context, docs);
 
   const convo = messages
     .filter((m) => m.role === "user" || m.role === "assistant")

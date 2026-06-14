@@ -153,12 +153,102 @@ export const ChatAssistantBody = zod.object({
   "label": zod.string().describe('Human-readable period label, e.g. \"Monday, June 9, 2026\" or \"May 2026\".'),
   "text": zod.string().describe('What the user reported actually accomplishing in that period.')
 })).optional(),
+  "documents": zod.array(zod.object({
+  "name": zod.string(),
+  "text": zod.string().describe('Extracted text content of the document (may be truncated).')
+})).optional().describe('The user\'s uploaded reference documents (name + extracted text).'),
   "profileSummary": zod.string().nullish()
 }).describe('A snapshot of everything the assistant knows about the user\'s app state.')
 })
 
 export const ChatAssistantResponse = zod.object({
   "reply": zod.string()
+})
+
+
+/**
+ * @summary Load the signed-in user's synced app state
+ */
+export const GetStateResponse = zod.object({
+  "data": zod.record(zod.string(), zod.unknown()).nullable().describe('Opaque app-state blob, or null if the user has none yet.'),
+  "updatedAt": zod.string().nullable()
+}).describe('The user\'s synced app-state document.')
+
+
+/**
+ * @summary Save the signed-in user's synced app state
+ */
+export const SaveStateBody = zod.object({
+  "data": zod.record(zod.string(), zod.unknown()).describe('Opaque app-state blob to persist for this user.')
+})
+
+export const SaveStateResponse = zod.object({
+  "data": zod.record(zod.string(), zod.unknown()).nullable().describe('Opaque app-state blob, or null if the user has none yet.'),
+  "updatedAt": zod.string().nullable()
+}).describe('The user\'s synced app-state document.')
+
+
+/**
+ * @summary List the signed-in user's uploaded documents
+ */
+export const ListDocumentsResponse = zod.object({
+  "documents": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "contentType": zod.string(),
+  "size": zod.number(),
+  "charCount": zod.number().describe('Number of characters of text extracted from the document.'),
+  "createdAt": zod.string()
+}).describe('Metadata about an uploaded document.'))
+})
+
+
+/**
+ * Called after a file is uploaded to object storage. The server downloads it, extracts readable text (txt, pdf, docx), and stores the document so the assistant can reference it.
+
+ * @summary Register an uploaded document and extract its text
+ */
+export const RegisterDocumentBody = zod.object({
+  "name": zod.string(),
+  "contentType": zod.string(),
+  "size": zod.number().optional(),
+  "objectPath": zod.string().describe('The \/objects\/... path returned by the upload step.')
+})
+
+export const RegisterDocumentResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "contentType": zod.string(),
+  "size": zod.number(),
+  "charCount": zod.number().describe('Number of characters of text extracted from the document.'),
+  "createdAt": zod.string()
+}).describe('Metadata about an uploaded document.')
+
+
+/**
+ * @summary Delete one of the signed-in user's documents
+ */
+export const DeleteDocumentParams = zod.object({
+  "id": zod.coerce.string()
+})
+
+export const DeleteDocumentResponse = zod.object({
+  "success": zod.boolean()
+})
+
+
+/**
+ * @summary Request a presigned URL to upload a file directly to object storage
+ */
+export const RequestUploadUrlBody = zod.object({
+  "name": zod.string(),
+  "size": zod.number().optional(),
+  "contentType": zod.string()
+})
+
+export const RequestUploadUrlResponse = zod.object({
+  "uploadURL": zod.string(),
+  "objectPath": zod.string()
 })
 
 

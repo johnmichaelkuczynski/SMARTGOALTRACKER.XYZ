@@ -116,6 +116,12 @@ export interface ScheduleItem {
   status: string;
 }
 
+export interface AssistantDocument {
+  name: string;
+  /** Extracted text content of the document (may be truncated). */
+  text: string;
+}
+
 /**
  * A snapshot of everything the assistant knows about the user's app state.
  */
@@ -129,6 +135,8 @@ export interface AssistantContext {
   /** Today's and upcoming scheduled occurrences. */
   schedule?: ScheduleItem[];
   reflections?: ReflectionEntry[];
+  /** The user's uploaded reference documents (name + extracted text). */
+  documents?: AssistantDocument[];
   /** @nullable */
   profileSummary?: string | null;
 }
@@ -140,5 +148,74 @@ export interface AssistantChatInput {
 
 export interface AssistantChatReply {
   reply: string;
+}
+
+/**
+ * Opaque app-state blob, or null if the user has none yet.
+ * @nullable
+ */
+export type StateResponseData = { [key: string]: unknown } | null;
+
+/**
+ * The user's synced app-state document.
+ */
+export interface StateResponse {
+  /**
+     * Opaque app-state blob, or null if the user has none yet.
+     * @nullable
+     */
+  data: StateResponseData;
+  /** @nullable */
+  updatedAt: string | null;
+}
+
+/**
+ * Opaque app-state blob to persist for this user.
+ */
+export type SaveStateInputData = { [key: string]: unknown };
+
+export interface SaveStateInput {
+  /** Opaque app-state blob to persist for this user. */
+  data: SaveStateInputData;
+}
+
+/**
+ * Metadata about an uploaded document.
+ */
+export interface DocumentMeta {
+  id: string;
+  name: string;
+  contentType: string;
+  size: number;
+  /** Number of characters of text extracted from the document. */
+  charCount: number;
+  createdAt: string;
+}
+
+export interface DocumentList {
+  documents: DocumentMeta[];
+}
+
+export interface RegisterDocumentInput {
+  name: string;
+  contentType: string;
+  size?: number;
+  /** The /objects/... path returned by the upload step. */
+  objectPath: string;
+}
+
+export interface DeleteResult {
+  success: boolean;
+}
+
+export interface RequestUploadUrlInput {
+  name: string;
+  size?: number;
+  contentType: string;
+}
+
+export interface UploadUrlResult {
+  uploadURL: string;
+  objectPath: string;
 }
 

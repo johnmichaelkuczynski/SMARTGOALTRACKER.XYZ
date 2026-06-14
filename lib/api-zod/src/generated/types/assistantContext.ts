@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { AssistantDocument } from './assistantDocument';
 import type { GoalSnapshot } from './goalSnapshot';
 import type { PsychCategory } from './psychCategory';
 import type { ReflectionEntry } from './reflectionEntry';
@@ -24,6 +25,8 @@ export interface AssistantContext {
   /** Today's and upcoming scheduled occurrences. */
   schedule?: ScheduleItem[];
   reflections?: ReflectionEntry[];
+  /** The user's uploaded reference documents (name + extracted text). */
+  documents?: AssistantDocument[];
   /** @nullable */
   profileSummary?: string | null;
 }

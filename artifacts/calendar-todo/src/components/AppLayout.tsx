@@ -1,12 +1,24 @@
 import { Link, useLocation } from "wouter";
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, ListTodo, Target, BarChart3, BookOpen, Brain, MessageCircle, Plus } from "lucide-react";
+import { CalendarDays, ListTodo, Target, BarChart3, BookOpen, Brain, MessageCircle, Plus, FileText, LogOut } from "lucide-react";
+import { useUser, useClerk } from "@clerk/react";
 import { Button } from "@/components/ui/button";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { computeAnalytics } from "@/lib/analytics";
 import { useStore } from "@/lib/storage";
 import { getViewDate } from "@/lib/viewDate";
 import type { Task } from "@/lib/types";
 import { AddTaskDialog } from "./AddTaskDialog";
+
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 const NAV = [
   { href: "/", label: "Today", icon: CalendarDays },
@@ -16,6 +28,7 @@ const NAV = [
   { href: "/journal", label: "Journal", icon: BookOpen },
   { href: "/mind", label: "Mind", icon: Brain },
   { href: "/assistant", label: "Assistant", icon: MessageCircle },
+  { href: "/documents", label: "Documents", icon: FileText },
 ];
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
@@ -75,6 +88,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <Button onClick={openCreate} size="sm" className="gap-2">
             <Plus className="h-4 w-4" /> Add
           </Button>
+          <UserMenu />
         </div>
         <nav className="max-w-6xl mx-auto px-6 flex gap-1 -mb-px">
           {NAV.map((n) => {
@@ -106,6 +120,47 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         defaults={editingTask ?? createDefaults}
       />
     </div>
+  );
+}
+
+function UserMenu() {
+  const { user } = useUser();
+  const { signOut } = useClerk();
+
+  const name = user?.fullName || user?.primaryEmailAddress?.emailAddress || "Account";
+  const email = user?.primaryEmailAddress?.emailAddress;
+  const initials = (user?.firstName?.[0] ?? "") + (user?.lastName?.[0] ?? "");
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="rounded-full focus:outline-none focus:ring-2 focus:ring-ring"
+          aria-label="Account menu"
+        >
+          <Avatar className="h-8 w-8">
+            <AvatarImage src={user?.imageUrl} alt={name} />
+            <AvatarFallback>{initials.toUpperCase() || name[0]?.toUpperCase()}</AvatarFallback>
+          </Avatar>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuLabel>
+          <div className="leading-tight">
+            <div className="text-foreground truncate">{name}</div>
+            {email && email !== name && (
+              <div className="text-xs font-normal text-muted-foreground truncate">{email}</div>
+            )}
+          </div>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => signOut({ redirectUrl: basePath || "/" })}>
+          <LogOut className="h-4 w-4" />
+          Log out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

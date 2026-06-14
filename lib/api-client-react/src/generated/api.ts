@@ -23,11 +23,19 @@ import type {
   ApiErrorMessage,
   AssistantChatInput,
   AssistantChatReply,
+  DeleteResult,
+  DocumentList,
+  DocumentMeta,
   HealthStatus,
   PsychAnalysis,
   PsychAnalysisInput,
   PsychChatInput,
-  PsychChatReply
+  PsychChatReply,
+  RegisterDocumentInput,
+  RequestUploadUrlInput,
+  SaveStateInput,
+  StateResponse,
+  UploadUrlResult
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -337,5 +345,444 @@ export const useChatAssistant = <TError = ErrorType<ApiErrorMessage>,
         TContext
       > => {
       return useMutation(getChatAssistantMutationOptions(options));
+    }
+
+export const getGetStateUrl = () => {
+
+
+
+
+  return `/api/state`
+}
+
+/**
+ * @summary Load the signed-in user's synced app state
+ */
+export const getState = async ( options?: RequestInit): Promise<StateResponse> => {
+
+  return customFetch<StateResponse>(getGetStateUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetStateQueryKey = () => {
+    return [
+    `/api/state`
+    ] as const;
+    }
+
+
+export const getGetStateQueryOptions = <TData = Awaited<ReturnType<typeof getState>>, TError = ErrorType<ApiErrorMessage>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getState>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetStateQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getState>>> = ({ signal }) => getState({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getState>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetStateQueryResult = NonNullable<Awaited<ReturnType<typeof getState>>>
+export type GetStateQueryError = ErrorType<ApiErrorMessage>
+
+
+/**
+ * @summary Load the signed-in user's synced app state
+ */
+
+export function useGetState<TData = Awaited<ReturnType<typeof getState>>, TError = ErrorType<ApiErrorMessage>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getState>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetStateQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getSaveStateUrl = () => {
+
+
+
+
+  return `/api/state`
+}
+
+/**
+ * @summary Save the signed-in user's synced app state
+ */
+export const saveState = async (saveStateInput: SaveStateInput, options?: RequestInit): Promise<StateResponse> => {
+
+  return customFetch<StateResponse>(getSaveStateUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      saveStateInput,)
+  }
+);}
+
+
+
+
+export const getSaveStateMutationOptions = <TError = ErrorType<ApiErrorMessage>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveState>>, TError,{data: BodyType<SaveStateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof saveState>>, TError,{data: BodyType<SaveStateInput>}, TContext> => {
+
+const mutationKey = ['saveState'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof saveState>>, {data: BodyType<SaveStateInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  saveState(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SaveStateMutationResult = NonNullable<Awaited<ReturnType<typeof saveState>>>
+    export type SaveStateMutationBody = BodyType<SaveStateInput>
+    export type SaveStateMutationError = ErrorType<ApiErrorMessage>
+
+    /**
+ * @summary Save the signed-in user's synced app state
+ */
+export const useSaveState = <TError = ErrorType<ApiErrorMessage>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveState>>, TError,{data: BodyType<SaveStateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof saveState>>,
+        TError,
+        {data: BodyType<SaveStateInput>},
+        TContext
+      > => {
+      return useMutation(getSaveStateMutationOptions(options));
+    }
+
+export const getListDocumentsUrl = () => {
+
+
+
+
+  return `/api/documents`
+}
+
+/**
+ * @summary List the signed-in user's uploaded documents
+ */
+export const listDocuments = async ( options?: RequestInit): Promise<DocumentList> => {
+
+  return customFetch<DocumentList>(getListDocumentsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListDocumentsQueryKey = () => {
+    return [
+    `/api/documents`
+    ] as const;
+    }
+
+
+export const getListDocumentsQueryOptions = <TData = Awaited<ReturnType<typeof listDocuments>>, TError = ErrorType<ApiErrorMessage>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDocuments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListDocumentsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listDocuments>>> = ({ signal }) => listDocuments({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listDocuments>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListDocumentsQueryResult = NonNullable<Awaited<ReturnType<typeof listDocuments>>>
+export type ListDocumentsQueryError = ErrorType<ApiErrorMessage>
+
+
+/**
+ * @summary List the signed-in user's uploaded documents
+ */
+
+export function useListDocuments<TData = Awaited<ReturnType<typeof listDocuments>>, TError = ErrorType<ApiErrorMessage>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listDocuments>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListDocumentsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getRegisterDocumentUrl = () => {
+
+
+
+
+  return `/api/documents`
+}
+
+/**
+ * Called after a file is uploaded to object storage. The server downloads it, extracts readable text (txt, pdf, docx), and stores the document so the assistant can reference it.
+
+ * @summary Register an uploaded document and extract its text
+ */
+export const registerDocument = async (registerDocumentInput: RegisterDocumentInput, options?: RequestInit): Promise<DocumentMeta> => {
+
+  return customFetch<DocumentMeta>(getRegisterDocumentUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      registerDocumentInput,)
+  }
+);}
+
+
+
+
+export const getRegisterDocumentMutationOptions = <TError = ErrorType<ApiErrorMessage>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof registerDocument>>, TError,{data: BodyType<RegisterDocumentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof registerDocument>>, TError,{data: BodyType<RegisterDocumentInput>}, TContext> => {
+
+const mutationKey = ['registerDocument'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof registerDocument>>, {data: BodyType<RegisterDocumentInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  registerDocument(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RegisterDocumentMutationResult = NonNullable<Awaited<ReturnType<typeof registerDocument>>>
+    export type RegisterDocumentMutationBody = BodyType<RegisterDocumentInput>
+    export type RegisterDocumentMutationError = ErrorType<ApiErrorMessage>
+
+    /**
+ * @summary Register an uploaded document and extract its text
+ */
+export const useRegisterDocument = <TError = ErrorType<ApiErrorMessage>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof registerDocument>>, TError,{data: BodyType<RegisterDocumentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof registerDocument>>,
+        TError,
+        {data: BodyType<RegisterDocumentInput>},
+        TContext
+      > => {
+      return useMutation(getRegisterDocumentMutationOptions(options));
+    }
+
+export const getDeleteDocumentUrl = (id: string,) => {
+
+
+
+
+  return `/api/documents/${id}`
+}
+
+/**
+ * @summary Delete one of the signed-in user's documents
+ */
+export const deleteDocument = async (id: string, options?: RequestInit): Promise<DeleteResult> => {
+
+  return customFetch<DeleteResult>(getDeleteDocumentUrl(id),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+export const getDeleteDocumentMutationOptions = <TError = ErrorType<ApiErrorMessage>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteDocument>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteDocument>>, TError,{id: string}, TContext> => {
+
+const mutationKey = ['deleteDocument'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteDocument>>, {id: string}> = (props) => {
+          const {id} = props ?? {};
+
+          return  deleteDocument(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteDocumentMutationResult = NonNullable<Awaited<ReturnType<typeof deleteDocument>>>
+
+    export type DeleteDocumentMutationError = ErrorType<ApiErrorMessage>
+
+    /**
+ * @summary Delete one of the signed-in user's documents
+ */
+export const useDeleteDocument = <TError = ErrorType<ApiErrorMessage>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteDocument>>, TError,{id: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteDocument>>,
+        TError,
+        {id: string},
+        TContext
+      > => {
+      return useMutation(getDeleteDocumentMutationOptions(options));
+    }
+
+export const getRequestUploadUrlUrl = () => {
+
+
+
+
+  return `/api/storage/uploads/request-url`
+}
+
+/**
+ * @summary Request a presigned URL to upload a file directly to object storage
+ */
+export const requestUploadUrl = async (requestUploadUrlInput: RequestUploadUrlInput, options?: RequestInit): Promise<UploadUrlResult> => {
+
+  return customFetch<UploadUrlResult>(getRequestUploadUrlUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      requestUploadUrlInput,)
+  }
+);}
+
+
+
+
+export const getRequestUploadUrlMutationOptions = <TError = ErrorType<ApiErrorMessage>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestUploadUrl>>, TError,{data: BodyType<RequestUploadUrlInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof requestUploadUrl>>, TError,{data: BodyType<RequestUploadUrlInput>}, TContext> => {
+
+const mutationKey = ['requestUploadUrl'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof requestUploadUrl>>, {data: BodyType<RequestUploadUrlInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  requestUploadUrl(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RequestUploadUrlMutationResult = NonNullable<Awaited<ReturnType<typeof requestUploadUrl>>>
+    export type RequestUploadUrlMutationBody = BodyType<RequestUploadUrlInput>
+    export type RequestUploadUrlMutationError = ErrorType<ApiErrorMessage>
+
+    /**
+ * @summary Request a presigned URL to upload a file directly to object storage
+ */
+export const useRequestUploadUrl = <TError = ErrorType<ApiErrorMessage>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestUploadUrl>>, TError,{data: BodyType<RequestUploadUrlInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof requestUploadUrl>>,
+        TError,
+        {data: BodyType<RequestUploadUrlInput>},
+        TContext
+      > => {
+      return useMutation(getRequestUploadUrlMutationOptions(options));
     }
 

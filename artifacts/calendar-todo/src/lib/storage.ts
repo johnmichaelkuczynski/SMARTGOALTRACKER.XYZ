@@ -1,4 +1,8 @@
 import { useSyncExternalStore } from "react";
+import {
+  getState as fetchServerState,
+  saveState as saveServerState,
+} from "@workspace/api-client-react";
 import type {
   Completion,
   CompletionStatus,
@@ -9,38 +13,142 @@ import type {
 } from "./types";
 import { seedData } from "./seed";
 
-const KEY = "tally:v1";
+const LEGACY_KEY = "tally:v1";
+const SAVE_DEBOUNCE_MS = 800;
 
-function load(): StoreState {
+export type SyncStatus = "idle" | "loading" | "ready";
+
+function keyFor(userId: string | null): string {
+  return userId ? `tally:v1:${userId}` : LEGACY_KEY;
+}
+
+function emptyState(): StoreState {
+  return { tasks: [], completions: [], journal: [], seeded: false };
+}
+
+function normalize(raw: Partial<StoreState> | null | undefined): StoreState {
+  const s = (raw ?? {}) as StoreState;
+  if (!s.tasks) s.tasks = [];
+  if (!s.completions) s.completions = [];
+  if (!s.journal) s.journal = [];
+  return s;
+}
+
+function readLocal(key: string): StoreState | null {
   try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) {
-      const seeded = seedData();
-      localStorage.setItem(KEY, JSON.stringify(seeded));
-      return seeded;
-    }
-    const parsed = JSON.parse(raw) as StoreState;
-    if (!parsed.tasks) parsed.tasks = [];
-    if (!parsed.completions) parsed.completions = [];
-    if (!parsed.journal) parsed.journal = [];
-    return parsed;
+    const raw = localStorage.getItem(key);
+    return raw ? normalize(JSON.parse(raw) as StoreState) : null;
   } catch {
-    const seeded = seedData();
-    return seeded;
+    return null;
   }
 }
 
-let state: StoreState =
-  typeof window !== "undefined"
-    ? load()
-    : { tasks: [], completions: [], journal: [], seeded: false };
+let activeUserId: string | null = null;
+// Bumped on every account transition (sign-in, switch, sign-out) so in-flight
+// loads/saves can detect they belong to a stale session and bail out.
+let syncToken = 0;
+let syncStatus: SyncStatus = "idle";
+let suppressSave = false;
+let saveTimer: ReturnType<typeof setTimeout> | null = null;
+
+let state: StoreState = emptyState();
 const listeners = new Set<() => void>();
+
+function notify() {
+  listeners.forEach((l) => l());
+}
+
+function setSyncStatus(s: SyncStatus) {
+  if (syncStatus === s) return;
+  syncStatus = s;
+  notify();
+}
+
+function cancelPendingSave() {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+}
 
 function persist() {
   try {
-    localStorage.setItem(KEY, JSON.stringify(state));
+    localStorage.setItem(keyFor(activeUserId), JSON.stringify(state));
   } catch {}
-  listeners.forEach((l) => l());
+  notify();
+  if (!suppressSave && activeUserId) scheduleSave(activeUserId);
+}
+
+function scheduleSave(userId: string) {
+  cancelPendingSave();
+  saveTimer = setTimeout(() => void flushSave(userId), SAVE_DEBOUNCE_MS);
+}
+
+async function flushSave(userId: string) {
+  saveTimer = null;
+  // Don't flush a save scheduled for a user who is no longer active.
+  if (activeUserId !== userId) return;
+  const snapshot = state;
+  try {
+    await saveServerState({ data: snapshot as unknown as Record<string, unknown> });
+  } catch {
+    // Keep the local cache; the next change will retry the save.
+  }
+}
+
+/** Load the signed-in user's state from the server, hydrating from the local cache first for instant UI. */
+export async function syncUser(userId: string): Promise<void> {
+  if (activeUserId === userId && syncStatus === "ready") return;
+  const token = ++syncToken;
+  cancelPendingSave();
+  activeUserId = userId;
+  setSyncStatus("loading");
+
+  const cached = readLocal(keyFor(userId));
+  if (cached && token === syncToken) {
+    state = cached;
+    notify();
+  }
+
+  try {
+    const res = await fetchServerState();
+    // Bail if the session changed while the request was in flight.
+    if (token !== syncToken) return;
+    if (res.data && typeof res.data === "object") {
+      suppressSave = true;
+      state = normalize(res.data as Partial<StoreState>);
+      persist();
+      suppressSave = false;
+    } else {
+      // New account: adopt this user's cache, else migrate pre-login anonymous
+      // data once (then clear it so other accounts can't inherit it), else seed.
+      let initial = cached;
+      if (!initial) {
+        const legacy = readLocal(LEGACY_KEY);
+        if (legacy) {
+          initial = legacy;
+          try {
+            localStorage.removeItem(LEGACY_KEY);
+          } catch {}
+        }
+      }
+      state = normalize(initial ?? seedData());
+      persist();
+    }
+  } catch {
+    // Offline or server error: keep whatever cache we have.
+  } finally {
+    if (token === syncToken) setSyncStatus("ready");
+  }
+}
+
+/** Reset to an empty store on sign-out so no data leaks between accounts. */
+export function resetForSignOut(): void {
+  syncToken++;
+  cancelPendingSave();
+  activeUserId = null;
+  state = emptyState();
+  setSyncStatus("idle");
 }
 
 function subscribe(l: () => void) {
@@ -55,6 +163,14 @@ export function useStore(): StoreState {
     subscribe,
     () => state,
     () => state,
+  );
+}
+
+export function useSyncStatus(): SyncStatus {
+  return useSyncExternalStore(
+    subscribe,
+    () => syncStatus,
+    () => syncStatus,
   );
 }
 
