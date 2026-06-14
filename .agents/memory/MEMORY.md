@@ -1,2 +1,3 @@
 - [Curl testing the dev server](dev-domain-curl.md) — `$REPLIT_DEV_DOMAIN` has no URL scheme; prefix `https://` or curl returns HTTP 000.
 - [Clerk + Tailwind v4 CSS setup](clerk-tailwind-v4.md) — import `@clerk/themes/shadcn.css` plainly (no `layer()` wrapper) + `tailwindcss({ optimize: false })`, or builds break.
+- [Object-storage path ownership (IDOR)](object-path-ownership.md) — routes reading objects by client-supplied objectPath must enforce ownership (claim-on-first-use), not just auth.

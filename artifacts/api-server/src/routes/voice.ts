@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { TranscribeVoiceBody, TranscribeVoiceResponse } from "@workspace/api-zod";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
+import { getObjectAclPolicy } from "../lib/objectAcl";
 
 const router: IRouter = Router();
 const objectStorage = new ObjectStorageService();
@@ -10,6 +11,10 @@ const MODEL = "gpt-5.4";
 const ASSEMBLYAI_BASE = "https://api.assemblyai.com/v2";
 const POLL_INTERVAL_MS = 1500;
 const POLL_TIMEOUT_MS = 90_000;
+const UPLOAD_TIMEOUT_MS = 60_000;
+const REQUEST_TIMEOUT_MS = 30_000;
+const POLL_REQUEST_TIMEOUT_MS = 15_000;
+const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 
 type Logger = { error: (obj: unknown, msg?: string) => void; warn: (obj: unknown, msg?: string) => void };
 
@@ -24,6 +29,7 @@ async function transcribeAudio(audio: Buffer): Promise<string> {
     method: "POST",
     headers: { authorization: apiKey, "content-type": "application/octet-stream" },
     body: audio,
+    signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
   });
   if (!uploadRes.ok) {
     throw new Error(`AssemblyAI upload failed (${uploadRes.status})`);
@@ -34,6 +40,7 @@ async function transcribeAudio(audio: Buffer): Promise<string> {
     method: "POST",
     headers: { authorization: apiKey, "content-type": "application/json" },
     body: JSON.stringify({ audio_url: uploadUrl }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   if (!createRes.ok) {
     throw new Error(`AssemblyAI transcript request failed (${createRes.status})`);
@@ -45,6 +52,7 @@ async function transcribeAudio(audio: Buffer): Promise<string> {
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
     const pollRes = await fetch(`${ASSEMBLYAI_BASE}/transcript/${id}`, {
       headers: { authorization: apiKey },
+      signal: AbortSignal.timeout(POLL_REQUEST_TIMEOUT_MS),
     });
     if (!pollRes.ok) {
       throw new Error(`AssemblyAI poll failed (${pollRes.status})`);
@@ -173,12 +181,33 @@ router.post("/voice/transcribe", async (req, res): Promise<void> => {
   try {
     const normalized = objectStorage.normalizeObjectEntityPath(objectPath);
     const file = await objectStorage.getObjectEntityFile(normalized);
+
+    // Authorization: a fresh upload has no ACL policy yet, so the first
+    // authenticated user to claim it becomes the owner. If a policy already
+    // exists and belongs to someone else, refuse — this prevents one user from
+    // transcribing another user's stored audio by guessing its path.
+    const existingPolicy = await getObjectAclPolicy(file);
+    if (existingPolicy && existingPolicy.owner !== userId) {
+      res.status(403).json({ error: "You don't have access to that recording." });
+      return;
+    }
+
+    const [metadata] = await file.getMetadata();
+    const size = Number(metadata.size ?? 0);
+    if (size > MAX_AUDIO_BYTES) {
+      res.status(413).json({ error: "That recording is too large to transcribe." });
+      return;
+    }
+
     const [downloaded] = await file.download();
     audio = downloaded;
-    await objectStorage.trySetObjectEntityAclPolicy(normalized, {
-      owner: userId,
-      visibility: "private",
-    });
+
+    if (!existingPolicy) {
+      await objectStorage.trySetObjectEntityAclPolicy(normalized, {
+        owner: userId,
+        visibility: "private",
+      });
+    }
   } catch (err) {
     if (err instanceof ObjectNotFoundError) {
       res.status(404).json({ error: "Recording not found in storage." });

@@ -44,6 +44,7 @@ export function VoiceCapture() {
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const genRef = useRef(0);
 
   function stopTracks() {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -57,6 +58,19 @@ export function VoiceCapture() {
   useEffect(() => stopTracks, []);
 
   function reset() {
+    genRef.current += 1;
+    const rec = recorderRef.current;
+    if (rec) {
+      rec.onstop = null;
+      rec.ondataavailable = null;
+      if (rec.state !== "inactive") {
+        try {
+          rec.stop();
+        } catch {
+          // already stopped
+        }
+      }
+    }
     stopTracks();
     recorderRef.current = null;
     chunksRef.current = [];
@@ -74,9 +88,17 @@ export function VoiceCapture() {
   }
 
   async function startRecording() {
+    const gen = ++genRef.current;
     setError(null);
+    setTranscript("");
+    setItems([]);
+    setSelected({});
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (gen !== genRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
       streamRef.current = stream;
       chunksRef.current = [];
       const recorder = new MediaRecorder(stream);
@@ -84,7 +106,7 @@ export function VoiceCapture() {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
       recorder.onstop = () => {
-        void processRecording();
+        void processRecording(gen);
       };
       recorder.start();
       recorderRef.current = recorder;
@@ -109,10 +131,11 @@ export function VoiceCapture() {
     }
   }
 
-  async function processRecording() {
+  async function processRecording(gen: number) {
     const type = recorderRef.current?.mimeType || "audio/webm";
     stopTracks();
     const blob = new Blob(chunksRef.current, { type });
+    if (gen !== genRef.current) return;
     if (blob.size === 0) {
       setError("That recording was empty. Try again.");
       setPhase("error");
@@ -133,12 +156,14 @@ export function VoiceCapture() {
       if (!put.ok) throw new Error(`Upload failed (${put.status})`);
 
       const result = await transcribeVoice({ objectPath, today: fmt(new Date()) });
+      if (gen !== genRef.current) return;
       const got = result.items ?? [];
       setTranscript(result.transcript ?? "");
       setItems(got);
       setSelected(Object.fromEntries(got.map((_, i) => [i, true])));
       setPhase("review");
     } catch {
+      if (gen !== genRef.current) return;
       setError("Couldn't transcribe that recording. Try again.");
       setPhase("error");
     }
