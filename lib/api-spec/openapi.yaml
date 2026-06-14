@@ -20,6 +20,8 @@ tags:
     description: User-uploaded reference documents
   - name: storage
     description: Object storage upload URLs
+  - name: voice
+    description: Voice dictation — transcription and structured item extraction
 paths:
   /healthz:
     get:
@@ -254,6 +256,48 @@ paths:
                 $ref: "#/components/schemas/UploadUrlResult"
         "401":
           description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorMessage"
+  /voice/transcribe:
+    post:
+      operationId: transcribeVoice
+      tags: [voice]
+      summary: Transcribe a recorded voice note and extract structured items
+      description: >
+        Called after a short audio recording is uploaded to object storage. The
+        server downloads it, transcribes it (AssemblyAI), then uses the model to
+        turn the spoken words into structured items the user can add to the app —
+        to-dos/goals and journal reflections. Returns the raw transcript plus the
+        proposed items for the user to confirm.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TranscribeVoiceInput"
+      responses:
+        "200":
+          description: Transcript and extracted items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceCaptureResult"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorMessage"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorMessage"
+        "500":
+          description: Transcription failed
           content:
             application/json:
               schema:
@@ -646,3 +690,69 @@ components:
       required:
         - uploadURL
         - objectPath
+    TranscribeVoiceInput:
+      type: object
+      properties:
+        objectPath:
+          type: string
+          description: The /objects/... path of the uploaded audio recording.
+        today:
+          type: string
+          description: >
+            Today's date as yyyy-MM-dd in the user's local timezone, used to
+            resolve relative dates spoken aloud ("tomorrow", "next Monday").
+      required:
+        - objectPath
+        - today
+    VoiceItem:
+      type: object
+      description: >
+        One thing the user dictated, extracted into a structured form. "task" items
+        become to-dos/goals; "journal" items become reflections.
+      properties:
+        kind:
+          type: string
+          description: Either "task" or "journal".
+        title:
+          type: string
+          description: Short title of the task (for task items).
+        notes:
+          type: ["string", "null"]
+          description: Optional extra detail for a task.
+        timeframe:
+          type: string
+          description: For tasks — daily, medium, or long.
+        date:
+          type: string
+          description: For tasks — yyyy-MM-dd the task is scheduled on.
+        importance:
+          type: ["integer", "null"]
+          description: For tasks — 1-10 if the user implied a priority.
+        recurrence:
+          type: string
+          description: For tasks — none, daily, weekly, or monthly.
+        period:
+          type: string
+          description: For journal items — day, week, month, or year.
+        periodKey:
+          type: string
+          description: For journal items — the period key, e.g. yyyy-MM-dd for a day.
+        text:
+          type: string
+          description: For journal items — the reflection text.
+      required:
+        - kind
+    VoiceCaptureResult:
+      type: object
+      properties:
+        transcript:
+          type: string
+          description: The raw transcribed text of what the user said.
+        items:
+          type: array
+          description: Structured items extracted from the transcript for the user to confirm.
+          items:
+            $ref: "#/components/schemas/VoiceItem"
+      required:
+        - transcript
+        - items

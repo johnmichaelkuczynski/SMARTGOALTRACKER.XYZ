@@ -219,3 +219,51 @@ export interface UploadUrlResult {
   objectPath: string;
 }
 
+export interface TranscribeVoiceInput {
+  /** The /objects/... path of the uploaded audio recording. */
+  objectPath: string;
+  /** Today's date as yyyy-MM-dd in the user's local timezone, used to resolve relative dates spoken aloud ("tomorrow", "next Monday").
+   */
+  today: string;
+}
+
+/**
+ * One thing the user dictated, extracted into a structured form. "task" items become to-dos/goals; "journal" items become reflections.
+
+ */
+export interface VoiceItem {
+  /** Either "task" or "journal". */
+  kind: string;
+  /** Short title of the task (for task items). */
+  title?: string;
+  /**
+     * Optional extra detail for a task.
+     * @nullable
+     */
+  notes?: string | null;
+  /** For tasks — daily, medium, or long. */
+  timeframe?: string;
+  /** For tasks — yyyy-MM-dd the task is scheduled on. */
+  date?: string;
+  /**
+     * For tasks — 1-10 if the user implied a priority.
+     * @nullable
+     */
+  importance?: number | null;
+  /** For tasks — none, daily, weekly, or monthly. */
+  recurrence?: string;
+  /** For journal items — day, week, month, or year. */
+  period?: string;
+  /** For journal items — the period key, e.g. yyyy-MM-dd for a day. */
+  periodKey?: string;
+  /** For journal items — the reflection text. */
+  text?: string;
+}
+
+export interface VoiceCaptureResult {
+  /** The raw transcribed text of what the user said. */
+  transcript: string;
+  /** Structured items extracted from the transcript for the user to confirm. */
+  items: VoiceItem[];
+}
+

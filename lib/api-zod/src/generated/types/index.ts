@@ -32,4 +32,7 @@ export * from './scheduleItem';
 export * from './stateResponse';
 export * from './stateResponseData';
 export * from './statSummary';
+export * from './transcribeVoiceInput';
 export * from './uploadUrlResult';
+export * from './voiceCaptureResult';
+export * from './voiceItem';

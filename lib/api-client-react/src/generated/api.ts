@@ -35,7 +35,9 @@ import type {
   RequestUploadUrlInput,
   SaveStateInput,
   StateResponse,
-  UploadUrlResult
+  TranscribeVoiceInput,
+  UploadUrlResult,
+  VoiceCaptureResult
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -784,5 +786,78 @@ export const useRequestUploadUrl = <TError = ErrorType<ApiErrorMessage>,
         TContext
       > => {
       return useMutation(getRequestUploadUrlMutationOptions(options));
+    }
+
+export const getTranscribeVoiceUrl = () => {
+
+
+
+
+  return `/api/voice/transcribe`
+}
+
+/**
+ * Called after a short audio recording is uploaded to object storage. The server downloads it, transcribes it (AssemblyAI), then uses the model to turn the spoken words into structured items the user can add to the app — to-dos/goals and journal reflections. Returns the raw transcript plus the proposed items for the user to confirm.
+
+ * @summary Transcribe a recorded voice note and extract structured items
+ */
+export const transcribeVoice = async (transcribeVoiceInput: TranscribeVoiceInput, options?: RequestInit): Promise<VoiceCaptureResult> => {
+
+  return customFetch<VoiceCaptureResult>(getTranscribeVoiceUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      transcribeVoiceInput,)
+  }
+);}
+
+
+
+
+export const getTranscribeVoiceMutationOptions = <TError = ErrorType<ApiErrorMessage>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof transcribeVoice>>, TError,{data: BodyType<TranscribeVoiceInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof transcribeVoice>>, TError,{data: BodyType<TranscribeVoiceInput>}, TContext> => {
+
+const mutationKey = ['transcribeVoice'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof transcribeVoice>>, {data: BodyType<TranscribeVoiceInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  transcribeVoice(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type TranscribeVoiceMutationResult = NonNullable<Awaited<ReturnType<typeof transcribeVoice>>>
+    export type TranscribeVoiceMutationBody = BodyType<TranscribeVoiceInput>
+    export type TranscribeVoiceMutationError = ErrorType<ApiErrorMessage>
+
+    /**
+ * @summary Transcribe a recorded voice note and extract structured items
+ */
+export const useTranscribeVoice = <TError = ErrorType<ApiErrorMessage>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof transcribeVoice>>, TError,{data: BodyType<TranscribeVoiceInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof transcribeVoice>>,
+        TError,
+        {data: BodyType<TranscribeVoiceInput>},
+        TContext
+      > => {
+      return useMutation(getTranscribeVoiceMutationOptions(options));
     }
 

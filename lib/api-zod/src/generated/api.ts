@@ -252,3 +252,30 @@ export const RequestUploadUrlResponse = zod.object({
 })
 
 
+/**
+ * Called after a short audio recording is uploaded to object storage. The server downloads it, transcribes it (AssemblyAI), then uses the model to turn the spoken words into structured items the user can add to the app — to-dos/goals and journal reflections. Returns the raw transcript plus the proposed items for the user to confirm.
+
+ * @summary Transcribe a recorded voice note and extract structured items
+ */
+export const TranscribeVoiceBody = zod.object({
+  "objectPath": zod.string().describe('The \/objects\/... path of the uploaded audio recording.'),
+  "today": zod.string().describe('Today\'s date as yyyy-MM-dd in the user\'s local timezone, used to resolve relative dates spoken aloud (\"tomorrow\", \"next Monday\").\n')
+})
+
+export const TranscribeVoiceResponse = zod.object({
+  "transcript": zod.string().describe('The raw transcribed text of what the user said.'),
+  "items": zod.array(zod.object({
+  "kind": zod.string().describe('Either \"task\" or \"journal\".'),
+  "title": zod.string().optional().describe('Short title of the task (for task items).'),
+  "notes": zod.string().nullish().describe('Optional extra detail for a task.'),
+  "timeframe": zod.string().optional().describe('For tasks — daily, medium, or long.'),
+  "date": zod.string().optional().describe('For tasks — yyyy-MM-dd the task is scheduled on.'),
+  "importance": zod.number().nullish().describe('For tasks — 1-10 if the user implied a priority.'),
+  "recurrence": zod.string().optional().describe('For tasks — none, daily, weekly, or monthly.'),
+  "period": zod.string().optional().describe('For journal items — day, week, month, or year.'),
+  "periodKey": zod.string().optional().describe('For journal items — the period key, e.g. yyyy-MM-dd for a day.'),
+  "text": zod.string().optional().describe('For journal items — the reflection text.')
+}).describe('One thing the user dictated, extracted into a structured form. \"task\" items become to-dos\/goals; \"journal\" items become reflections.\n')).describe('Structured items extracted from the transcript for the user to confirm.')
+})
+
+

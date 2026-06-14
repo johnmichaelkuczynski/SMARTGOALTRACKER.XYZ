@@ -17,6 +17,7 @@ import { useStore } from "@/lib/storage";
 import { getViewDate } from "@/lib/viewDate";
 import type { Task } from "@/lib/types";
 import { AddTaskDialog } from "./AddTaskDialog";
+import { VoiceCapture } from "./VoiceCapture";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -85,6 +86,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <Stat label="Medium" value={`${Math.round(stats.byTimeframe.medium.rate * 100)}%`} />
             <Stat label="Long" value={`${Math.round(stats.byTimeframe.long.rate * 100)}%`} />
           </div>
+          <VoiceCapture />
           <Button onClick={openCreate} size="sm" className="gap-2">
             <Plus className="h-4 w-4" /> Add
           </Button>
