@@ -1,0 +1,976 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: psychology
+    description: Psychological goal-profile analytics and chat
+  - name: assistant
+    description: App-aware general-purpose conversational assistant
+  - name: state
+    description: Per-user application state synced across devices
+  - name: documents
+    description: User-uploaded reference documents
+  - name: storage
+    description: Object storage upload URLs
+  - name: voice
+    description: Voice dictation — transcription and structured item extraction
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /psychology/analysis:
+    post:
+      operationId: analyzePsychology
+      tags: [psychology]
+      summary: Build a psychological profile from the user's goals
+      description: >
+        Takes the user's goals (with per-goal completion stats) and returns a
+        psychological profile: goals grouped by their nature into categories,
+        each with an accurate completion rate, plus narrative traits and insights.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PsychAnalysisInput"
+      responses:
+        "200":
+          description: Analysis produced
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PsychAnalysis"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorMessage"
+  /psychology/plan:
+    post:
+      operationId: planPsychology
+      tags: [psychology]
+      summary: Turn the goal profile into a concrete action plan
+      description: >
+        Takes the user's profile (summary, traits, categories, insights) plus their
+        goals, reflections and context, and — accepting the read at face value —
+        returns a small set of concrete, prioritised moves the user should make.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PsychPlanInput"
+      responses:
+        "200":
+          description: Action plan produced
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PsychPlan"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorMessage"
+  /psychology/chat:
+    post:
+      operationId: chatPsychology
+      tags: [psychology]
+      summary: Discuss the goal profile with the assistant
+      description: >
+        Answers the user's questions grounded in their goals, completion-by-category
+        data and profile. Supports hypotheticals such as proposing a new goal.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PsychChatInput"
+      responses:
+        "200":
+          description: Assistant reply
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PsychChatReply"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorMessage"
+  /assistant/chat:
+    post:
+      operationId: chatAssistant
+      tags: [assistant]
+      summary: Converse with the app-aware assistant
+      description: >
+        A general-purpose assistant that also receives the user's full app context —
+        today's agenda, upcoming schedule, completion analytics, goals with per-goal
+        follow-through, reflections and the psychological profile — and uses it to
+        answer intelligently about what to do and the kind of person the data describes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AssistantChatInput"
+      responses:
+        "200":
+          description: Assistant reply
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AssistantChatReply"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorMessage"
+  /state:
+    get:
+      operationId: getState
+      tags: [state]
+      summary: Load the signed-in user's synced app state
+      responses:
+        "200":
+          description: The user's state document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StateResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorMessage"
+    put:
+      operationId: saveState
+      tags: [state]
+      summary: Save the signed-in user's synced app state
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveStateInput"
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StateResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorMessage"
+  /documents:
+    get:
+      operationId: listDocuments
+      tags: [documents]
+      summary: List the signed-in user's uploaded documents
+      responses:
+        "200":
+          description: The user's documents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentList"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorMessage"
+    post:
+      operationId: registerDocument
+      tags: [documents]
+      summary: Register an uploaded document and extract its text
+      description: >
+        Called after a file is uploaded to object storage. The server downloads
+        it, extracts readable text (txt, pdf, docx), and stores the document so
+        the assistant can reference it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterDocumentInput"
+      responses:
+        "200":
+          description: Registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentMeta"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorMessage"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorMessage"
+  /documents/{id}:
+    delete:
+      operationId: deleteDocument
+      tags: [documents]
+      summary: Delete one of the signed-in user's documents
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResult"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorMessage"
+  /documents/extract:
+    post:
+      operationId: extractDocumentText
+      tags: [documents]
+      summary: Read the text out of an uploaded document without saving it
+      description: >
+        Called after a TXT, Markdown, Word, or PDF file is uploaded to object
+        storage. The server downloads it and extracts its readable text,
+        returning that text so it can be inserted inline into a reflection,
+        the Mind profiler, the assistant chat, or any other text field — for
+        example attaching a report the user wrote as context. Does not persist
+        the document to the user's library.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExtractDocumentTextInput"
+      responses:
+        "200":
+          description: Text read from the document
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExtractDocumentTextResult"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorMessage"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorMessage"
+  /storage/uploads/request-url:
+    post:
+      operationId: requestUploadUrl
+      tags: [storage]
+      summary: Request a presigned URL to upload a file directly to object storage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RequestUploadUrlInput"
+      responses:
+        "200":
+          description: Presigned upload URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadUrlResult"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorMessage"
+  /voice/transcribe:
+    post:
+      operationId: transcribeVoice
+      tags: [voice]
+      summary: Transcribe a recorded voice note and extract structured items
+      description: >
+        Called after a short audio recording is uploaded to object storage. The
+        server downloads it, transcribes it (ElevenLabs), then uses the model to
+        turn the spoken words into structured items the user can add to the app —
+        to-dos/goals and journal reflections. Returns the raw transcript plus the
+        proposed items for the user to confirm.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TranscribeVoiceInput"
+      responses:
+        "200":
+          description: Transcript and extracted items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceCaptureResult"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorMessage"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorMessage"
+        "500":
+          description: Transcription failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorMessage"
+  /ocr/extract:
+    post:
+      operationId: extractImageText
+      tags: [ocr]
+      summary: Read the text out of an uploaded image (OCR)
+      description: >
+        Called after a screenshot or photo is uploaded to object storage. The
+        server downloads it and uses a vision model to transcribe any text it
+        contains, returning that text so it can be inserted into a to-do, the
+        Mind profiler, the assistant chat, or any other text field as proof or
+        context. If the image holds no legible text, returns an empty string.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExtractImageTextInput"
+      responses:
+        "200":
+          description: Text read from the image
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExtractImageTextResult"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorMessage"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorMessage"
+        "500":
+          description: OCR failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorMessage"
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    ApiErrorMessage:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+    GoalSnapshot:
+      type: object
+      description: A single goal plus its observed completion stats.
+      properties:
+        title:
+          type: string
+        notes:
+          type: ["string", "null"]
+        timeframe:
+          type: string
+          description: One of daily, medium, long.
+        importance:
+          type: ["integer", "null"]
+        done:
+          type: number
+          description: Credited completions (partial counts as 0.5).
+        due:
+          type: integer
+          description: Number of tracked occurrences that were due.
+        rate:
+          type: number
+          description: done / due, between 0 and 1.
+      required:
+        - title
+        - timeframe
+        - done
+        - due
+        - rate
+    PsychTrait:
+      type: object
+      properties:
+        label:
+          type: string
+        score:
+          type: integer
+          description: 0-100 strength of this trait.
+        note:
+          type: string
+      required:
+        - label
+        - score
+        - note
+    PsychCategory:
+      type: object
+      properties:
+        name:
+          type: string
+        blurb:
+          type: string
+        taskCount:
+          type: integer
+        done:
+          type: number
+        due:
+          type: integer
+        rate:
+          type: number
+      required:
+        - name
+        - blurb
+        - taskCount
+        - done
+        - due
+        - rate
+    ReflectionEntry:
+      type: object
+      properties:
+        period:
+          type: string
+          description: One of day, week, month, year.
+        label:
+          type: string
+          description: Human-readable period label, e.g. "Monday, June 9, 2026" or "May 2026".
+        text:
+          type: string
+          description: What the user reported actually accomplishing in that period.
+      required:
+        - period
+        - label
+        - text
+    PsychAnalysisInput:
+      type: object
+      properties:
+        goals:
+          type: array
+          items:
+            $ref: "#/components/schemas/GoalSnapshot"
+        reflections:
+          type: array
+          description: The user's own free-text accounts of what they accomplished, by period.
+          items:
+            $ref: "#/components/schemas/ReflectionEntry"
+        context:
+          type: ["string", "null"]
+          description: The user's own free-text context — their side of the story, things the stats and reflections don't capture, which the model may weigh when profiling.
+      required:
+        - goals
+    PsychAnalysis:
+      type: object
+      properties:
+        generatedAt:
+          type: string
+        headline:
+          type: string
+        summary:
+          type: string
+        traits:
+          type: array
+          items:
+            $ref: "#/components/schemas/PsychTrait"
+        categories:
+          type: array
+          items:
+            $ref: "#/components/schemas/PsychCategory"
+        insights:
+          type: array
+          items:
+            type: string
+      required:
+        - generatedAt
+        - headline
+        - summary
+        - traits
+        - categories
+        - insights
+    PsychChatMessage:
+      type: object
+      properties:
+        role:
+          type: string
+          description: user or assistant.
+        content:
+          type: string
+      required:
+        - role
+        - content
+    PsychChatInput:
+      type: object
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/PsychChatMessage"
+        goals:
+          type: array
+          items:
+            $ref: "#/components/schemas/GoalSnapshot"
+        categories:
+          type: array
+          items:
+            $ref: "#/components/schemas/PsychCategory"
+        reflections:
+          type: array
+          description: The user's own free-text accounts of what they accomplished, by period.
+          items:
+            $ref: "#/components/schemas/ReflectionEntry"
+        context:
+          type: ["string", "null"]
+          description: The user's own free-text context — their side of the story, things the stats and reflections don't capture, which the model may weigh when replying.
+        profileSummary:
+          type: ["string", "null"]
+      required:
+        - messages
+        - goals
+    PsychChatReply:
+      type: object
+      properties:
+        reply:
+          type: string
+      required:
+        - reply
+    PsychPlanInput:
+      type: object
+      properties:
+        goals:
+          type: array
+          items:
+            $ref: "#/components/schemas/GoalSnapshot"
+        categories:
+          type: array
+          items:
+            $ref: "#/components/schemas/PsychCategory"
+        traits:
+          type: array
+          items:
+            $ref: "#/components/schemas/PsychTrait"
+        insights:
+          type: array
+          items:
+            type: string
+        headline:
+          type: ["string", "null"]
+        profileSummary:
+          type: ["string", "null"]
+        reflections:
+          type: array
+          description: The user's own free-text accounts of what they accomplished, by period.
+          items:
+            $ref: "#/components/schemas/ReflectionEntry"
+        context:
+          type: ["string", "null"]
+          description: The user's own free-text context — their side of the story, which the model may weigh.
+      required:
+        - goals
+    PsychPlanMove:
+      type: object
+      properties:
+        title:
+          type: string
+          description: A short imperative name for the move.
+        detail:
+          type: string
+          description: What to do concretely and why it follows from the profile.
+      required:
+        - title
+        - detail
+    PsychPlan:
+      type: object
+      properties:
+        generatedAt:
+          type: string
+        premise:
+          type: string
+          description: One or two sentences restating the read being taken at face value.
+        moves:
+          type: array
+          items:
+            $ref: "#/components/schemas/PsychPlanMove"
+        firstStep:
+          type: string
+          description: The single thing to do first, today.
+      required:
+        - generatedAt
+        - premise
+        - moves
+        - firstStep
+    StatSummary:
+      type: object
+      description: Aggregate follow-through over a slice of tasks.
+      properties:
+        label:
+          type: string
+        done:
+          type: number
+        due:
+          type: integer
+        rate:
+          type: number
+      required:
+        - label
+        - done
+        - due
+        - rate
+    ScheduleItem:
+      type: object
+      description: A concrete scheduled occurrence on a specific date.
+      properties:
+        title:
+          type: string
+        date:
+          type: string
+          description: yyyy-MM-dd of this occurrence.
+        timeframe:
+          type: string
+        importance:
+          type: ["integer", "null"]
+        status:
+          type: string
+          description: done, partial, or pending.
+      required:
+        - title
+        - date
+        - timeframe
+        - status
+    AssistantContext:
+      type: object
+      description: A snapshot of everything the assistant knows about the user's app state.
+      properties:
+        today:
+          type: string
+          description: Today's date, human readable.
+        overall:
+          $ref: "#/components/schemas/StatSummary"
+        byTimeframe:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatSummary"
+        goals:
+          type: array
+          items:
+            $ref: "#/components/schemas/GoalSnapshot"
+        categories:
+          type: array
+          items:
+            $ref: "#/components/schemas/PsychCategory"
+        schedule:
+          type: array
+          description: Today's and upcoming scheduled occurrences.
+          items:
+            $ref: "#/components/schemas/ScheduleItem"
+        reflections:
+          type: array
+          items:
+            $ref: "#/components/schemas/ReflectionEntry"
+        documents:
+          type: array
+          description: The user's uploaded reference documents (name + extracted text).
+          items:
+            $ref: "#/components/schemas/AssistantDocument"
+        profileSummary:
+          type: ["string", "null"]
+      required:
+        - today
+    AssistantDocument:
+      type: object
+      properties:
+        name:
+          type: string
+        text:
+          type: string
+          description: Extracted text content of the document (may be truncated).
+      required:
+        - name
+        - text
+    AssistantChatInput:
+      type: object
+      properties:
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/PsychChatMessage"
+        context:
+          $ref: "#/components/schemas/AssistantContext"
+      required:
+        - messages
+        - context
+    AssistantChatReply:
+      type: object
+      properties:
+        reply:
+          type: string
+      required:
+        - reply
+    StateResponse:
+      type: object
+      description: The user's synced app-state document.
+      properties:
+        data:
+          type: ["object", "null"]
+          additionalProperties: true
+          description: Opaque app-state blob, or null if the user has none yet.
+        updatedAt:
+          type: ["string", "null"]
+      required:
+        - data
+        - updatedAt
+    SaveStateInput:
+      type: object
+      properties:
+        data:
+          type: object
+          additionalProperties: true
+          description: Opaque app-state blob to persist for this user.
+      required:
+        - data
+    DocumentMeta:
+      type: object
+      description: Metadata about an uploaded document.
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        contentType:
+          type: string
+        size:
+          type: integer
+        charCount:
+          type: integer
+          description: Number of characters of text extracted from the document.
+        createdAt:
+          type: string
+      required:
+        - id
+        - name
+        - contentType
+        - size
+        - charCount
+        - createdAt
+    DocumentList:
+      type: object
+      properties:
+        documents:
+          type: array
+          items:
+            $ref: "#/components/schemas/DocumentMeta"
+      required:
+        - documents
+    RegisterDocumentInput:
+      type: object
+      properties:
+        name:
+          type: string
+        contentType:
+          type: string
+        size:
+          type: integer
+        objectPath:
+          type: string
+          description: The /objects/... path returned by the upload step.
+      required:
+        - name
+        - contentType
+        - objectPath
+    DeleteResult:
+      type: object
+      properties:
+        success:
+          type: boolean
+      required:
+        - success
+    RequestUploadUrlInput:
+      type: object
+      properties:
+        name:
+          type: string
+        size:
+          type: integer
+        contentType:
+          type: string
+      required:
+        - name
+        - contentType
+    UploadUrlResult:
+      type: object
+      properties:
+        uploadURL:
+          type: string
+        objectPath:
+          type: string
+      required:
+        - uploadURL
+        - objectPath
+    ExtractImageTextInput:
+      type: object
+      properties:
+        objectPath:
+          type: string
+          description: The /objects/... path of the uploaded image.
+      required:
+        - objectPath
+    ExtractDocumentTextInput:
+      type: object
+      properties:
+        objectPath:
+          type: string
+          description: The /objects/... path of the uploaded document.
+        name:
+          type: string
+          description: The original filename, used to pick the right text parser.
+        contentType:
+          type: string
+          description: The uploaded file's MIME type.
+      required:
+        - objectPath
+        - name
+        - contentType
+    ExtractDocumentTextResult:
+      type: object
+      properties:
+        text:
+          type: string
+          description: The text read from the document. Empty if none was found.
+      required:
+        - text
+    ExtractImageTextResult:
+      type: object
+      properties:
+        text:
+          type: string
+          description: The text read from the image. Empty if none was legible.
+      required:
+        - text
+    TranscribeVoiceInput:
+      type: object
+      properties:
+        objectPath:
+          type: string
+          description: The /objects/... path of the uploaded audio recording.
+        today:
+          type: string
+          description: >
+            Today's date as yyyy-MM-dd in the user's local timezone, used to
+            resolve relative dates spoken aloud ("tomorrow", "next Monday").
+      required:
+        - objectPath
+        - today
+    VoiceItem:
+      type: object
+      description: >
+        One thing the user dictated, extracted into a structured form. "task" items
+        become to-dos/goals; "journal" items become reflections.
+      properties:
+        kind:
+          type: string
+          description: Either "task" or "journal".
+        title:
+          type: string
+          description: Short title of the task (for task items).
+        notes:
+          type: ["string", "null"]
+          description: Optional extra detail for a task.
+        timeframe:
+          type: string
+          description: For tasks — daily, medium, or long.
+        date:
+          type: string
+          description: For tasks — yyyy-MM-dd the task is scheduled on.
+        importance:
+          type: ["integer", "null"]
+          description: For tasks — 1-10 if the user implied a priority.
+        recurrence:
+          type: string
+          description: For tasks — none, daily, weekly, or monthly.
+        period:
+          type: string
+          description: For journal items — day, week, month, or year.
+        periodKey:
+          type: string
+          description: For journal items — the period key, e.g. yyyy-MM-dd for a day.
+        text:
+          type: string
+          description: For journal items — the reflection text.
+      required:
+        - kind
+    VoiceCaptureResult:
+      type: object
+      properties:
+        transcript:
+          type: string
+          description: The raw transcribed text of what the user said.
+        items:
+          type: array
+          description: Structured items extracted from the transcript for the user to confirm.
+          items:
+            $ref: "#/components/schemas/VoiceItem"
+      required:
+        - transcript
+        - items

@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Calendar To-Do"
+version = "1.0.0"
+id = "artifacts/calendar-todo"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21916
+
+[services.development]
+run = "pnpm --filter @workspace/calendar-todo run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/calendar-todo", "run", "build" ]
+publicDir = "artifacts/calendar-todo/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21916"
+BASE_PATH = "/"
