@@ -130,7 +130,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           })}
         </nav>
       </header>
-      <SaveErrorBanner />
       <main className="flex-1 max-w-6xl mx-auto px-6 py-8 w-full">{children}</main>
       <AddTaskDialog
         key={editId ?? `new:${createDate ?? ""}:${createExtra?.timeframe ?? ""}`}
@@ -210,33 +209,15 @@ function SaveIndicator() {
     );
   }
   return (
-    <span className="hidden sm:flex items-center gap-1.5 text-xs text-destructive">
-      <CloudOff className="h-3.5 w-3.5" /> Not saved
-    </span>
-  );
-}
-
-function SaveErrorBanner() {
-  const saveState = useSaveState();
-  if (saveState !== "error") return null;
-  return (
-    <div className="bg-destructive/10 border-b border-destructive/30">
-      <div className="max-w-6xl mx-auto px-6 py-2.5 flex items-center gap-3 text-sm text-destructive">
-        <CloudOff className="h-4 w-4 shrink-0" />
-        <span className="flex-1">
-          Your latest changes haven&apos;t been saved to your database. Your data is
-          safe in this browser, but won&apos;t sync until this succeeds.
-        </span>
-        <Button
-          size="sm"
-          variant="outline"
-          className="gap-1.5 border-destructive/40 text-destructive hover:bg-destructive/10"
-          onClick={() => retrySave()}
-        >
-          <RefreshCw className="h-3.5 w-3.5" /> Retry
-        </Button>
-      </div>
-    </div>
+    <button
+      type="button"
+      onClick={() => retrySave()}
+      title="Your latest changes haven't synced to your database yet. Click to retry."
+      className="hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+    >
+      <CloudOff className="h-3.5 w-3.5" /> Not synced
+      <RefreshCw className="h-3 w-3" />
+    </button>
   );
 }
 

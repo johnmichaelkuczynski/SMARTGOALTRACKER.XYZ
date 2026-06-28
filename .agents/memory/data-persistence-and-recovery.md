@@ -32,3 +32,20 @@ production DB until the app is deployed.
 
 **Why:** prevents future identity-change data loss and makes the browser-only copy
 durable server-side once the table exists.
+
+**Cross-origin / duplicate-app recovery:** localStorage is per-origin, so data in a
+"duplicate" app (different `.replit.app`/`.replit.dev` URL) is NOT readable server-side
+and NOT reachable by `findRichestOrphan` (same-origin only). The only bridge between two
+separate projects is the user's browser. Implemented an Export/Import path
+(`exportState`/`importState` in storage.ts + `RestoreDataDialog`): a DevTools console
+snippet on the source app downloads a `goal-tracker-backup.json` of all `tally:v1*` keys;
+the destination app imports it (accepts raw state, map-of-states, or map-of-stringified
+states; picks richest non-empty; stashes a `tally-preimport-backup:*` undo copy first).
+
+**Save durability + the preview false-alarm:** `flushSave` now serializes (single
+in-flight + one queued resave) so an older write can't clobber newer under the server's
+last-write-wins upsert, and surfaces status via `useSaveState`/`retrySave`. CAUTION: a
+visible "not saved" error fires in the in-workspace/canvas iframe because cookie auth
+401s there (see embedded-preview-auth) — a loud banner there is a FALSE alarm that
+enrages users. Keep sync-failure UI subtle (small muted indicator), not a full-width
+banner.
