@@ -49,7 +49,7 @@ function AppRoutes() {
     );
   }
 
-  if (!auth?.authenticated) {
+  if (!auth?.authenticated && !import.meta.env.DEV) {
     return <SignInPage />;
   }
 
