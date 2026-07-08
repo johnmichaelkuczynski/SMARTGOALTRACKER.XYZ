@@ -18,7 +18,7 @@ declare global {
   }
 }
 
-export function setupAuth(app: Express) {
+export async function setupAuth(app: Express): Promise<void> {
   const sanitizeSecret = (v?: string) =>
     (v || "").replace(/[\u00A0\u200B\u200C\u200D\uFEFF]/g, "").trim();
 
@@ -57,10 +57,21 @@ export function setupAuth(app: Express) {
     console.log("Session pool connected to database");
   });
 
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS "user_sessions" (
+      "sid" varchar NOT NULL COLLATE "default",
+      "sess" json NOT NULL,
+      "expire" timestamp(6) NOT NULL,
+      CONSTRAINT "user_sessions_pkey" PRIMARY KEY ("sid") NOT DEFERRABLE INITIALLY IMMEDIATE
+    );
+    CREATE INDEX IF NOT EXISTS "IDX_user_sessions_expire" ON "user_sessions" ("expire");
+  `);
+
+  console.log("Session table ensured.");
+
   const pgStore = new PgSession({
     pool,
     tableName: "user_sessions",
-    createTableIfMissing: true,
     errorLog: console.error.bind(console, "Session store error:"),
   });
 
