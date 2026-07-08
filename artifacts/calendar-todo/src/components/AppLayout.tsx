@@ -1,13 +1,16 @@
 import { Link, useLocation } from "wouter";
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, ListTodo, ListChecks, Target, BarChart3, BookOpen, Brain, MessageCircle, Plus, FileText, Settings, Ban, DownloadCloud, Check, RefreshCw, CloudOff, Loader2 } from "lucide-react";
+import { CalendarDays, ListTodo, ListChecks, Target, BarChart3, BookOpen, Brain, MessageCircle, Plus, FileText, Settings, Ban, DownloadCloud, Check, RefreshCw, CloudOff, Loader2, LogIn, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { useAuth, useLogout } from "@/lib/useAuth";
 import { computeAnalytics } from "@/lib/analytics";
 import { useStore, useSaveState, retrySave } from "@/lib/storage";
 import { getViewDate } from "@/lib/viewDate";
@@ -140,6 +143,11 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
 function UserMenu() {
   const [restoreOpen, setRestoreOpen] = useState(false);
+  const { data: auth } = useAuth();
+  const { mutate: logout } = useLogout();
+
+  const user = auth?.user;
+  const isAuthed = auth?.authenticated;
 
   return (
     <>
@@ -148,16 +156,49 @@ function UserMenu() {
           <button
             type="button"
             className="rounded-full p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors focus:outline-none focus:ring-2 focus:ring-ring"
-            aria-label="Settings"
+            aria-label="Account menu"
           >
             <Settings className="h-5 w-5" />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuContent align="end" className="w-64">
+          {isAuthed && user ? (
+            <>
+              <DropdownMenuLabel>
+                <div className="leading-tight">
+                  <div className="text-foreground truncate font-medium">
+                    {user.displayName || user.username}
+                  </div>
+                  {user.email && (
+                    <div className="text-xs font-normal text-muted-foreground truncate">
+                      {user.email}
+                    </div>
+                  )}
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+            </>
+          ) : null}
           <DropdownMenuItem onClick={() => setRestoreOpen(true)}>
             <DownloadCloud className="h-4 w-4" />
             Restore / back up data
           </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          {isAuthed ? (
+            <DropdownMenuItem onClick={() => logout()}>
+              <LogOut className="h-4 w-4" />
+              Sign out
+            </DropdownMenuItem>
+          ) : (
+            <DropdownMenuItem
+              onClick={() => {
+                window.location.href = "/api/auth/google";
+              }}
+            >
+              <LogIn className="h-4 w-4" />
+              Sign in with Google
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
       <RestoreDataDialog open={restoreOpen} onOpenChange={setRestoreOpen} />

@@ -10,6 +10,12 @@ declare global {
 }
 
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
+  // Prefer Passport session auth (Google OAuth)
+  if (req.isAuthenticated() && req.user) {
+    req.userId = req.user.id.toString();
+    return next();
+  }
+  // Fall back to device UUID bearer token (anonymous access)
   const auth = req.headers.authorization;
   const deviceId = auth?.startsWith("Bearer ") ? auth.slice(7).trim() : null;
   if (!deviceId) {
