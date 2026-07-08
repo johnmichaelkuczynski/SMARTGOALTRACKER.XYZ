@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, ListTodo, ListChecks, Target, BarChart3, BookOpen, Brain, MessageCircle, Plus, FileText, Settings, Ban, DownloadCloud, Check, RefreshCw, CloudOff, Loader2, LogIn, LogOut, Shield } from "lucide-react";
+import { CalendarDays, ListTodo, ListChecks, Target, BarChart3, BookOpen, Brain, MessageCircle, Plus, FileText, Settings, Ban, DownloadCloud, Check, RefreshCw, CloudOff, Loader2, LogIn, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -21,9 +21,7 @@ import { RestoreDataDialog } from "./RestoreDataDialog";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-const ADMIN_EMAIL = "johnmichaelkuczynski@gmail.com";
-
-const BASE_NAV = [
+const NAV = [
   { href: "/", label: "Today", icon: CalendarDays },
   { href: "/all", label: "All tasks", icon: ListChecks },
   { href: "/commands", label: "Commands", icon: Ban },
@@ -39,15 +37,6 @@ const BASE_NAV = [
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [open, setOpen] = useState(false);
-  const { data: auth } = useAuth();
-  const isAdminUser =
-    auth?.user?.email?.toLowerCase() === ADMIN_EMAIL;
-  const navItems = [
-    ...BASE_NAV,
-    ...(isAdminUser
-      ? [{ href: "/admin", label: "Administrative", icon: Shield }]
-      : []),
-  ];
   const [editId, setEditId] = useState<string | undefined>(undefined);
   const [createDate, setCreateDate] = useState<string | undefined>(undefined);
   const [createExtra, setCreateExtra] = useState<Partial<Task> | undefined>(undefined);
@@ -120,7 +109,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <UserMenu />
         </div>
         <nav className="max-w-6xl mx-auto px-6 flex gap-1 -mb-px">
-          {navItems.map((n) => {
+          {NAV.map((n) => {
             const active = location === n.href;
             const Icon = n.icon;
             return (
