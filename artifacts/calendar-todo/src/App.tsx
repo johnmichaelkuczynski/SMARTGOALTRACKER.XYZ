@@ -21,10 +21,13 @@ import Journal from "@/pages/Journal";
 import Mind from "@/pages/Mind";
 import Assistant from "@/pages/Assistant";
 import Documents from "@/pages/Documents";
+import AdminPage from "@/pages/AdminPage";
+import { SignInPage } from "@/pages/AuthPages";
 import { AppLayout } from "@/components/AppLayout";
 import { useServerSync } from "@/lib/useServerSync";
 import { deviceId } from "@/lib/storage";
 import { setAuthTokenGetter } from "@workspace/api-client-react";
+import { useAuth } from "@/lib/useAuth";
 
 const queryClient = new QueryClient();
 
@@ -33,7 +36,22 @@ const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 setAuthTokenGetter(() => deviceId);
 
 function AppRoutes() {
+  const { data: auth, isLoading: authLoading } = useAuth();
   const status = useServerSync();
+
+  if (authLoading) {
+    return (
+      <div className="flex min-h-[100dvh] items-center justify-center bg-background">
+        <div className="flex items-center gap-3 text-muted-foreground">
+          <Spinner className="h-5 w-5" /> Loading…
+        </div>
+      </div>
+    );
+  }
+
+  if (!auth?.authenticated) {
+    return <SignInPage />;
+  }
 
   if (status === "loading" || status === "idle") {
     return (
@@ -58,6 +76,7 @@ function AppRoutes() {
         <Route path="/mind" component={Mind} />
         <Route path="/assistant" component={Assistant} />
         <Route path="/documents" component={Documents} />
+        <Route path="/admin" component={AdminPage} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>

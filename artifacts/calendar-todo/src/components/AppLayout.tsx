@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, ListTodo, ListChecks, Target, BarChart3, BookOpen, Brain, MessageCircle, Plus, FileText, Settings, Ban, DownloadCloud, Check, RefreshCw, CloudOff, Loader2, LogOut } from "lucide-react";
+import { CalendarDays, ListTodo, ListChecks, Target, BarChart3, BookOpen, Brain, MessageCircle, Plus, FileText, Settings, Ban, DownloadCloud, Check, RefreshCw, CloudOff, Loader2, LogOut, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -34,6 +34,8 @@ const NAV = [
   { href: "/documents", label: "Documents", icon: FileText },
 ];
 
+const ADMIN_EMAIL = "johnmichaelkuczynski@gmail.com";
+
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [open, setOpen] = useState(false);
@@ -42,6 +44,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const [createExtra, setCreateExtra] = useState<Partial<Task> | undefined>(undefined);
   const { tasks, completions } = useStore();
   const stats = computeAnalytics(tasks, completions);
+  const { data: auth } = useAuth();
+  const isAdmin = auth?.user?.email?.toLowerCase() === ADMIN_EMAIL;
 
   const editingTask = editId ? tasks.find((t) => t.id === editId) : undefined;
   const createDefaults = useMemo<Partial<Task> | undefined>(
@@ -108,7 +112,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           </Button>
           <UserMenu />
         </div>
-        <nav className="max-w-6xl mx-auto px-6 flex gap-1 -mb-px">
+        <nav className="max-w-6xl mx-auto px-6 flex gap-1 -mb-px overflow-x-auto">
           {NAV.map((n) => {
             const active = location === n.href;
             const Icon = n.icon;
@@ -116,7 +120,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               <Link
                 key={n.href}
                 href={n.href}
-                className={`px-4 py-3 text-sm flex items-center gap-2 border-b-2 transition-colors ${
+                className={`px-4 py-3 text-sm flex items-center gap-2 border-b-2 transition-colors whitespace-nowrap ${
                   active
                     ? "border-primary text-foreground"
                     : "border-transparent text-muted-foreground hover:text-foreground"
@@ -127,6 +131,19 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               </Link>
             );
           })}
+          {isAdmin && (
+            <Link
+              href="/admin"
+              className={`px-4 py-3 text-sm flex items-center gap-2 border-b-2 transition-colors whitespace-nowrap ${
+                location === "/admin"
+                  ? "border-primary text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <ShieldCheck className="h-4 w-4" />
+              Administrative
+            </Link>
+          )}
         </nav>
       </header>
       <main className="flex-1 max-w-6xl mx-auto px-6 py-8 w-full">{children}</main>
