@@ -120,7 +120,7 @@ export async function setupAuth(app: Express): Promise<void> {
   });
 
   if (googleEnabled) {
-    const CALLBACK_PATH = "/auth/google/callback";
+    const CALLBACK_PATH = "/api/auth/google/callback";
 
     const getCallbackURL = () => {
       if (process.env.NODE_ENV === "production") {
@@ -250,7 +250,6 @@ export async function setupAuth(app: Express): Promise<void> {
       },
     ];
     app.get(CALLBACK_PATH, ...callbackHandler);
-    app.get("/api/auth/google/callback", ...callbackHandler);
 
     console.log("Google OAuth configured. Callback URL:", getCallbackURL());
   }
