@@ -1,16 +1,12 @@
 import { Link, useLocation } from "wouter";
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, ListTodo, ListChecks, Target, BarChart3, BookOpen, Brain, MessageCircle, Plus, FileText, LogOut, Ban, DownloadCloud, Check, RefreshCw, CloudOff, Loader2 } from "lucide-react";
-import { useUser, useClerk } from "@clerk/react";
+import { CalendarDays, ListTodo, ListChecks, Target, BarChart3, BookOpen, Brain, MessageCircle, Plus, FileText, Settings, Ban, DownloadCloud, Check, RefreshCw, CloudOff, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { computeAnalytics } from "@/lib/analytics";
 import { useStore, useSaveState, retrySave } from "@/lib/storage";
@@ -143,13 +139,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 }
 
 function UserMenu() {
-  const { user } = useUser();
-  const { signOut } = useClerk();
   const [restoreOpen, setRestoreOpen] = useState(false);
-
-  const name = user?.fullName || user?.primaryEmailAddress?.emailAddress || "Account";
-  const email = user?.primaryEmailAddress?.emailAddress;
-  const initials = (user?.firstName?.[0] ?? "") + (user?.lastName?.[0] ?? "");
 
   return (
     <>
@@ -157,32 +147,16 @@ function UserMenu() {
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            className="rounded-full focus:outline-none focus:ring-2 focus:ring-ring"
-            aria-label="Account menu"
+            className="rounded-full p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors focus:outline-none focus:ring-2 focus:ring-ring"
+            aria-label="Settings"
           >
-            <Avatar className="h-8 w-8">
-              <AvatarImage src={user?.imageUrl} alt={name} />
-              <AvatarFallback>{initials.toUpperCase() || name[0]?.toUpperCase()}</AvatarFallback>
-            </Avatar>
+            <Settings className="h-5 w-5" />
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56">
-          <DropdownMenuLabel>
-            <div className="leading-tight">
-              <div className="text-foreground truncate">{name}</div>
-              {email && email !== name && (
-                <div className="text-xs font-normal text-muted-foreground truncate">{email}</div>
-              )}
-            </div>
-          </DropdownMenuLabel>
-          <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => setRestoreOpen(true)}>
             <DownloadCloud className="h-4 w-4" />
             Restore / back up data
-          </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => signOut({ redirectUrl: basePath || "/" })}>
-            <LogOut className="h-4 w-4" />
-            Log out
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

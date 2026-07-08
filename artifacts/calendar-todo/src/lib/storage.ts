@@ -16,7 +16,25 @@ import type {
 import { seedData } from "./seed";
 
 const LEGACY_KEY = "tally:v1";
+const DEVICE_KEY = "tally:device-id";
 const SAVE_DEBOUNCE_MS = 800;
+
+function getOrCreateDeviceId(): string {
+  try {
+    const existing = localStorage.getItem(DEVICE_KEY);
+    if (existing) return existing;
+    const id =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : Math.random().toString(36).slice(2) + Date.now().toString(36);
+    localStorage.setItem(DEVICE_KEY, id);
+    return id;
+  } catch {
+    return "anon-" + Math.random().toString(36).slice(2);
+  }
+}
+
+export const deviceId: string = getOrCreateDeviceId();
 
 export type SyncStatus = "idle" | "loading" | "ready";
 /** Whether the latest local change has been persisted to the server database. */
@@ -95,7 +113,7 @@ function findRichestOrphan(excludeKey: string): StoreState | null {
   return best;
 }
 
-let activeUserId: string | null = null;
+let activeUserId: string | null = deviceId;
 // Bumped on every account transition (sign-in, switch, sign-out) so in-flight
 // loads/saves can detect they belong to a stale session and bail out.
 let syncToken = 0;
@@ -194,6 +212,11 @@ export function retrySave(): void {
   if (activeUserId) void flushSave(activeUserId);
 }
 
+/** Boot the per-device sync (call once on app start). */
+export async function syncDevice(): Promise<void> {
+  return syncUser(deviceId);
+}
+
 /** Load the signed-in user's state from the server, hydrating from the local cache first for instant UI. */
 export async function syncUser(userId: string): Promise<void> {
   if (activeUserId === userId && syncStatus === "ready") return;
@@ -246,15 +269,8 @@ export async function syncUser(userId: string): Promise<void> {
   }
 }
 
-/** Reset to an empty store on sign-out so no data leaks between accounts. */
-export function resetForSignOut(): void {
-  syncToken++;
-  cancelPendingSave();
-  activeUserId = null;
-  state = emptyState();
-  setSyncStatus("idle");
-  setSaveState("idle");
-}
+/** No-op kept for API compatibility. */
+export function resetForSignOut(): void {}
 
 function subscribe(l: () => void) {
   listeners.add(l);
