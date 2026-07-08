@@ -3,33 +3,39 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { setupAuth } from "./lib/auth";
 
-const app: Express = express();
+export async function createApp(): Promise<Express> {
+  const app: Express = express();
 
-app.use(
-  pinoHttp({
-    logger,
-    serializers: {
-      req(req) {
-        return {
-          id: req.id,
-          method: req.method,
-          url: req.url?.split("?")[0],
-        };
+  app.use(
+    pinoHttp({
+      logger,
+      serializers: {
+        req(req) {
+          return {
+            id: req.id,
+            method: req.method,
+            url: req.url?.split("?")[0],
+          };
+        },
+        res(res) {
+          return {
+            statusCode: res.statusCode,
+          };
+        },
       },
-      res(res) {
-        return {
-          statusCode: res.statusCode,
-        };
-      },
-    },
-  }),
-);
+    }),
+  );
 
-app.use(cors({ credentials: true, origin: true }));
-app.use(express.json({ limit: "2mb" }));
-app.use(express.urlencoded({ extended: true }));
+  app.use(cors({ credentials: true, origin: true }));
+  app.use(express.json({ limit: "2mb" }));
+  app.use(express.urlencoded({ extended: true }));
 
-app.use("/api", router);
+  // Auth must be set up before routes so session/passport middleware runs first
+  await setupAuth(app);
 
-export default app;
+  app.use("/api", router);
+
+  return app;
+}
