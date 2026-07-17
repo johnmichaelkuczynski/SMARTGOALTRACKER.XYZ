@@ -22,6 +22,8 @@ import Mind from "@/pages/Mind";
 import Assistant from "@/pages/Assistant";
 import Documents from "@/pages/Documents";
 import AdminPage from "@/pages/AdminPage";
+import ProjectsList from "@/pages/ProjectsList";
+import ProjectDetail from "@/pages/ProjectDetail";
 import { SignInPage } from "@/pages/AuthPages";
 import { AppLayout } from "@/components/AppLayout";
 import { useServerSync } from "@/lib/useServerSync";
@@ -77,6 +79,8 @@ function AppRoutes() {
         <Route path="/assistant" component={Assistant} />
         <Route path="/documents" component={Documents} />
         <Route path="/admin" component={AdminPage} />
+        <Route path="/projects" component={ProjectsList} />
+        <Route path="/projects/:id" component={ProjectDetail} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>
