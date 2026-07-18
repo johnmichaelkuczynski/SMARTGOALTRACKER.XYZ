@@ -24,6 +24,7 @@ import Documents from "@/pages/Documents";
 import AdminPage from "@/pages/AdminPage";
 import ProjectsList from "@/pages/ProjectsList";
 import ProjectDetail from "@/pages/ProjectDetail";
+import Informed from "@/pages/Informed";
 import { SignInPage } from "@/pages/AuthPages";
 import { AppLayout } from "@/components/AppLayout";
 import { useServerSync } from "@/lib/useServerSync";
@@ -81,6 +82,7 @@ function AppRoutes() {
         <Route path="/admin" component={AdminPage} />
         <Route path="/projects" component={ProjectsList} />
         <Route path="/projects/:id" component={ProjectDetail} />
+        <Route path="/informed" component={Informed} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>

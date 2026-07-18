@@ -5,3 +5,4 @@ export * from "./visits";
 export * from "./projects";
 export * from "./projectMessages";
 export * from "./projectDocuments";
+export * from "./informedMessages";
