@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Send, Trash2, Bot, User, Loader2, Info, X, Copy, Check,
 } from "lucide-react";
-import { useStore } from "@/lib/storage";
+import { useStore, deviceId } from "@/lib/storage";
 import { buildAssistantContext } from "@/lib/assistantContext";
 import type { PsychAnalysis } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
@@ -30,7 +30,11 @@ interface MessageRow {
 async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...opts,
-    headers: { "Content-Type": "application/json", ...(opts?.headers ?? {}) },
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${deviceId}`,
+      ...(opts?.headers ?? {}),
+    },
     credentials: "include",
   });
   const data = await res.json();
@@ -209,7 +213,10 @@ export default function Informed() {
     try {
       const res = await fetch("/api/informed/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${deviceId}`,
+        },
         credentials: "include",
         body: JSON.stringify({ message: text, context }),
         signal: abort.signal,
