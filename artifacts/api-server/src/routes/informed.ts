@@ -1,10 +1,11 @@
 import { Router, type IRouter } from "express";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import {
   db,
   informedMessagesTable,
+  informedConversationsTable,
   documentsTable,
   projectsTable,
   projectMessagesTable,
@@ -17,7 +18,7 @@ const MAX_HISTORY = 40;
 const MAX_DOC_CHARS = 8000;
 const MAX_PROJECT_MSG_CHARS = 3000;
 
-// ── Types (mirrors AssistantContext from api-zod) ────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 interface StatSummary { label: string; done: number; due: number; rate: number }
 interface GoalSnapshot {
@@ -27,7 +28,6 @@ interface GoalSnapshot {
 interface Reflection { period: string; label: string; text: string }
 interface Category { name: string; rate: number; taskCount: number; due: number }
 interface ScheduleItem { title: string; date: string; timeframe: string; importance?: number | null; status: string }
-
 interface FrontendContext {
   today?: string;
   overall?: StatSummary;
@@ -41,99 +41,118 @@ interface FrontendContext {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function cap(s: string, n: number): string {
-  return s.length > n ? s.slice(0, n) + "…" : s;
-}
-
-function pct(rate: number, due: number): string {
-  return due > 0 ? `${Math.round(rate * 100)}%` : "untracked";
-}
+const cap = (s: string, n: number) => s.length > n ? s.slice(0, n) + "…" : s;
+const pct = (rate: number, due: number) => due > 0 ? `${Math.round(rate * 100)}%` : "untracked";
 
 function buildTaskContext(ctx: FrontendContext): string {
   const parts: string[] = [];
   parts.push(`TODAY: ${ctx.today ?? new Date().toDateString()}`);
-
-  if (ctx.overall) {
-    parts.push(`OVERALL FOLLOW-THROUGH: ${pct(ctx.overall.rate, ctx.overall.due)} (${ctx.overall.done}/${ctx.overall.due} tracked completions)`);
-  }
-
-  if (ctx.byTimeframe?.length) {
-    parts.push(`BY TIMEFRAME:\n${ctx.byTimeframe.map((s) => `  - ${s.label}: ${pct(s.rate, s.due)} (${s.done}/${s.due})`).join("\n")}`);
-  }
-
+  if (ctx.overall) parts.push(`OVERALL FOLLOW-THROUGH: ${pct(ctx.overall.rate, ctx.overall.due)} (${ctx.overall.done}/${ctx.overall.due} tracked completions)`);
+  if (ctx.byTimeframe?.length) parts.push(`BY TIMEFRAME:\n${ctx.byTimeframe.map((s) => `  - ${s.label}: ${pct(s.rate, s.due)} (${s.done}/${s.due})`).join("\n")}`);
   if (ctx.goals?.length) {
-    const lines = ctx.goals.slice(0, 60).map((g) => {
+    parts.push(`GOALS:\n${ctx.goals.slice(0, 60).map((g) => {
       const imp = g.importance != null ? `, importance ${g.importance}/10` : "";
       const note = g.notes ? ` — "${cap(g.notes, 200)}"` : "";
       return `  - "${g.title}" (${g.timeframe}${imp}) — follow-through ${pct(g.rate, g.due)}${note}`;
-    });
-    parts.push(`GOALS:\n${lines.join("\n")}`);
+    }).join("\n")}`);
   } else {
     parts.push("GOALS: (none set yet)");
   }
-
-  if (ctx.categories?.length) {
-    const lines = ctx.categories.map((c) => `  - ${c.name}: ${pct(c.rate, c.due)} across ${c.taskCount} goal(s)`);
-    parts.push(`BY CATEGORY:\n${lines.join("\n")}`);
-  }
-
-  if (ctx.schedule?.length) {
-    const lines = ctx.schedule.slice(0, 30).map((s) => {
-      const imp = s.importance != null ? `, importance ${s.importance}/10` : "";
-      return `  - ${s.date}: "${s.title}" (${s.timeframe}${imp}) [${s.status}]`;
-    });
-    parts.push(`SCHEDULE (today and upcoming):\n${lines.join("\n")}`);
-  }
-
-  if (ctx.reflections?.length) {
-    const lines = ctx.reflections.slice(0, 15).map((r) => `(${r.period}) ${r.label}:\n${cap(r.text, 600)}`);
-    parts.push(`USER'S OWN REFLECTIONS:\n${lines.join("\n\n")}`);
-  }
-
-  if (ctx.profileSummary) {
-    parts.push(`PSYCHOLOGICAL PROFILE:\n${cap(ctx.profileSummary, 2000)}`);
-  }
-
+  if (ctx.categories?.length) parts.push(`BY CATEGORY:\n${ctx.categories.map((c) => `  - ${c.name}: ${pct(c.rate, c.due)} across ${c.taskCount} goal(s)`).join("\n")}`);
+  if (ctx.schedule?.length) parts.push(`SCHEDULE:\n${ctx.schedule.slice(0, 30).map((s) => `  - ${s.date}: "${s.title}" (${s.timeframe}) [${s.status}]`).join("\n")}`);
+  if (ctx.reflections?.length) parts.push(`REFLECTIONS:\n${ctx.reflections.slice(0, 15).map((r) => `(${r.period}) ${r.label}:\n${cap(r.text, 600)}`).join("\n\n")}`);
+  if (ctx.profileSummary) parts.push(`PSYCHOLOGICAL PROFILE:\n${cap(ctx.profileSummary, 2000)}`);
   return parts.join("\n\n");
 }
 
-// ── Get conversation history ──────────────────────────────────────────────────
+/** Derive a short title from the first user message */
+function titleFromMessage(msg: string): string {
+  const clean = msg.replace(/\s+/g, " ").trim();
+  return clean.length > 60 ? clean.slice(0, 57) + "…" : clean;
+}
 
-router.get("/informed/messages", async (req, res): Promise<void> => {
+// ── Conversations ─────────────────────────────────────────────────────────────
+
+router.get("/informed/conversations", async (req, res): Promise<void> => {
   const userId = req.userId!;
   try {
-    const messages = await db
-      .select()
-      .from(informedMessagesTable)
-      .where(eq(informedMessagesTable.userId, userId))
-      .orderBy(informedMessagesTable.createdAt);
-    res.json(messages);
+    const rows = await db.select()
+      .from(informedConversationsTable)
+      .where(eq(informedConversationsTable.userId, userId))
+      .orderBy(desc(informedConversationsTable.updatedAt));
+    res.json(rows);
   } catch (err) {
-    req.log.error({ err }, "Failed to load informed messages");
+    req.log.error({ err }, "Failed to list conversations");
+    res.status(500).json({ error: "Failed to load conversations" });
+  }
+});
+
+router.post("/informed/conversations", async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  try {
+    const id = randomUUID();
+    const [row] = await db.insert(informedConversationsTable)
+      .values({ id, userId, title: "New chat" })
+      .returning();
+    res.json(row);
+  } catch (err) {
+    req.log.error({ err }, "Failed to create conversation");
+    res.status(500).json({ error: "Failed to create conversation" });
+  }
+});
+
+router.delete("/informed/conversations/:id", async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  const { id } = req.params;
+  try {
+    await db.delete(informedMessagesTable).where(
+      and(eq(informedMessagesTable.conversationId, id), eq(informedMessagesTable.userId, userId))
+    );
+    await db.delete(informedConversationsTable).where(
+      and(eq(informedConversationsTable.id, id), eq(informedConversationsTable.userId, userId))
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "Failed to delete conversation");
+    res.status(500).json({ error: "Failed to delete conversation" });
+  }
+});
+
+// ── Messages for a conversation ───────────────────────────────────────────────
+
+router.get("/informed/conversations/:id/messages", async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  const { id } = req.params;
+  try {
+    const msgs = await db.select()
+      .from(informedMessagesTable)
+      .where(
+        and(eq(informedMessagesTable.conversationId, id), eq(informedMessagesTable.userId, userId))
+      )
+      .orderBy(informedMessagesTable.createdAt);
+    res.json(msgs);
+  } catch (err) {
+    req.log.error({ err }, "Failed to load messages");
     res.status(500).json({ error: "Failed to load messages" });
   }
 });
 
-// ── Clear conversation ────────────────────────────────────────────────────────
-
-router.delete("/informed/messages", async (req, res): Promise<void> => {
-  const userId = req.userId!;
-  try {
-    await db.delete(informedMessagesTable).where(eq(informedMessagesTable.userId, userId));
-    res.json({ ok: true });
-  } catch (err) {
-    req.log.error({ err }, "Failed to clear informed messages");
-    res.status(500).json({ error: "Failed to clear conversation" });
-  }
-});
-
-// ── Chat (streaming SSE) ──────────────────────────────────────────────────────
+// ── Chat (SSE streaming) ──────────────────────────────────────────────────────
 
 router.post("/informed/chat", async (req, res): Promise<void> => {
   const userId = req.userId!;
-  const { message, context } = req.body as { message?: string; context?: FrontendContext };
+  const { message, conversationId, context } = req.body as {
+    message?: string;
+    conversationId?: string;
+    context?: FrontendContext;
+  };
+
   if (!message?.trim()) {
     res.status(400).json({ error: "Message is required" });
+    return;
+  }
+  if (!conversationId) {
+    res.status(400).json({ error: "conversationId is required" });
     return;
   }
 
@@ -142,20 +161,17 @@ router.post("/informed/chat", async (req, res): Promise<void> => {
   res.setHeader("Connection", "keep-alive");
 
   try {
-    // Load history + user documents + projects in parallel
     const [history, globalDocs, projects] = await Promise.all([
       db.select().from(informedMessagesTable)
-        .where(eq(informedMessagesTable.userId, userId))
+        .where(and(eq(informedMessagesTable.conversationId, conversationId), eq(informedMessagesTable.userId, userId)))
         .orderBy(informedMessagesTable.createdAt),
       db.select({ name: documentsTable.name, text: documentsTable.extractedText })
-        .from(documentsTable)
-        .where(eq(documentsTable.userId, userId)),
+        .from(documentsTable).where(eq(documentsTable.userId, userId)),
       db.select().from(projectsTable)
         .where(eq(projectsTable.userId, userId))
         .orderBy(desc(projectsTable.updatedAt)),
     ]);
 
-    // Load recent project messages + docs for top 5 projects
     const recentProjects = projects.slice(0, 5);
     const projectDetails = await Promise.all(
       recentProjects.map(async (p) => {
@@ -163,40 +179,44 @@ router.post("/informed/chat", async (req, res): Promise<void> => {
           db.select({ role: projectMessagesTable.role, content: projectMessagesTable.content })
             .from(projectMessagesTable)
             .where(eq(projectMessagesTable.projectId, p.id))
-            .orderBy(desc(projectMessagesTable.createdAt))
-            .limit(10),
+            .orderBy(desc(projectMessagesTable.createdAt)).limit(10),
           db.select({ name: projectDocumentsTable.name, content: projectDocumentsTable.content })
-            .from(projectDocumentsTable)
-            .where(eq(projectDocumentsTable.projectId, p.id)),
+            .from(projectDocumentsTable).where(eq(projectDocumentsTable.projectId, p.id)),
         ]);
         return { project: p, messages: msgs.reverse(), docs };
       }),
     );
 
     // Save user message
+    const isFirstMessage = history.length === 0;
     await db.insert(informedMessagesTable).values({
-      id: randomUUID(), userId, role: "user", content: message.trim(),
+      id: randomUUID(), userId, conversationId, role: "user", content: message.trim(),
     });
 
-    // Build context from frontend-supplied data (always accurate, not keyed by server userId)
+    // Auto-title the conversation from first message
+    if (isFirstMessage) {
+      await db.update(informedConversationsTable)
+        .set({ title: titleFromMessage(message.trim()), updatedAt: new Date() })
+        .where(and(eq(informedConversationsTable.id, conversationId), eq(informedConversationsTable.userId, userId)));
+    } else {
+      await db.update(informedConversationsTable)
+        .set({ updatedAt: new Date() })
+        .where(and(eq(informedConversationsTable.id, conversationId), eq(informedConversationsTable.userId, userId)));
+    }
+
+    // Build system prompt
     const taskContext = context ? buildTaskContext(context) : "No task/goal data available.";
 
     let projectContext = "";
     if (projectDetails.length > 0) {
       const sections = projectDetails.map(({ project, messages, docs }) => {
-        const recent = messages
-          .map((m) => `${m.role === "user" ? "USER" : "ADVISOR"}: ${cap(m.content, 400)}`)
-          .join("\n");
-        const docText = docs
-          .map((d) => `  Document "${d.name}": ${cap(d.content, 600)}`)
-          .join("\n");
+        const recent = messages.map((m) => `${m.role === "user" ? "USER" : "ADVISOR"}: ${cap(m.content, 400)}`).join("\n");
+        const docText = docs.map((d) => `  Document "${d.name}": ${cap(d.content, 600)}`).join("\n");
         return [
           `PROJECT: "${project.name}"`,
           project.description ? `Description: ${project.description}` : null,
           docs.length ? `Documents:\n${docText}` : null,
-          messages.length
-            ? `Recent conversation:\n${cap(recent, MAX_PROJECT_MSG_CHARS)}`
-            : "No conversation yet.",
+          messages.length ? `Recent conversation:\n${cap(recent, MAX_PROJECT_MSG_CHARS)}` : "No conversation yet.",
         ].filter(Boolean).join("\n");
       });
       projectContext = `USER'S PROJECTS:\n\n${sections.join("\n\n---\n\n")}`;
@@ -226,22 +246,18 @@ ${projectContext}
 ${docContext}
 
 How to use this knowledge:
-- When the user asks for advice, plans, or decisions, reason from their ACTUAL track record, not generic principles. If they reliably finish one type of goal but always abandon another, say so.
+- When the user asks for advice, plans, or decisions, reason from their ACTUAL track record, not generic principles.
 - When they ask about their projects, you already know the context — don't ask them to re-explain.
 - When they ask "what should I work on today?", look at their goals, follow-through patterns, and projects and give a specific, reasoned answer.
-- When they ask open-ended questions, give sharp, honest answers grounded in their specific situation.
-- You can help with ANYTHING — writing, coding, analysis, brainstorming — but you always have this person's full context available.
 - Be direct, honest, and specific. A sharp advisor who actually knows their situation, not a generic chatbot.
 - Never make up facts about their data. If you don't see something in the context, say so.`;
 
-    // Build conversation for Claude (exclude the message just saved; it goes in convo below)
     const convo = history.slice(-MAX_HISTORY).map((m) => ({
       role: m.role as "user" | "assistant",
       content: m.content,
     }));
     convo.push({ role: "user", content: message.trim() });
 
-    // Stream response
     let fullResponse = "";
     const stream = anthropic.messages.stream({
       model: MODEL,
@@ -251,23 +267,19 @@ How to use this knowledge:
     });
 
     for await (const event of stream) {
-      if (
-        event.type === "content_block_delta" &&
-        event.delta.type === "text_delta"
-      ) {
+      if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
         fullResponse += event.delta.text;
         res.write(`data: ${JSON.stringify({ content: event.delta.text })}\n\n`);
       }
     }
 
-    // Save assistant reply
     if (fullResponse) {
       await db.insert(informedMessagesTable).values({
-        id: randomUUID(), userId, role: "assistant", content: fullResponse,
+        id: randomUUID(), userId, conversationId, role: "assistant", content: fullResponse,
       });
     }
 
-    res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+    res.write(`data: ${JSON.stringify({ done: true, isFirstMessage })}\n\n`);
     res.end();
   } catch (err) {
     req.log.error({ err }, "Informed chat failed");

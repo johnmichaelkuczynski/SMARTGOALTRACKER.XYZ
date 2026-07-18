@@ -5,11 +5,15 @@ export const informedMessagesTable = pgTable(
   {
     id: text("id").primaryKey(),
     userId: text("user_id").notNull(),
+    conversationId: text("conversation_id"),
     role: text("role").notNull(),
     content: text("content").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("informed_messages_user_id_idx").on(table.userId)],
+  (table) => [
+    index("informed_messages_user_id_idx").on(table.userId),
+    index("informed_messages_conv_id_idx").on(table.conversationId),
+  ],
 );
 
 export type InformedMessageRow = typeof informedMessagesTable.$inferSelect;

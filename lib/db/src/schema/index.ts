@@ -6,3 +6,4 @@ export * from "./projects";
 export * from "./projectMessages";
 export * from "./projectDocuments";
 export * from "./informedMessages";
+export * from "./informedConversations";
