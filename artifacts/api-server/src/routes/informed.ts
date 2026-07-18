@@ -5,7 +5,6 @@ import { anthropic } from "@workspace/integrations-anthropic-ai";
 import {
   db,
   informedMessagesTable,
-  userStateTable,
   documentsTable,
   projectsTable,
   projectMessagesTable,
@@ -18,6 +17,28 @@ const MAX_HISTORY = 40;
 const MAX_DOC_CHARS = 8000;
 const MAX_PROJECT_MSG_CHARS = 3000;
 
+// ── Types (mirrors AssistantContext from api-zod) ────────────────────────────
+
+interface StatSummary { label: string; done: number; due: number; rate: number }
+interface GoalSnapshot {
+  title: string; notes?: string | null; timeframe: string;
+  importance?: number | null; done: number; due: number; rate: number;
+}
+interface Reflection { period: string; label: string; text: string }
+interface Category { name: string; rate: number; taskCount: number; due: number }
+interface ScheduleItem { title: string; date: string; timeframe: string; importance?: number | null; status: string }
+
+interface FrontendContext {
+  today?: string;
+  overall?: StatSummary;
+  byTimeframe?: StatSummary[];
+  goals?: GoalSnapshot[];
+  categories?: Category[];
+  schedule?: ScheduleItem[];
+  reflections?: Reflection[];
+  profileSummary?: string | null;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function cap(s: string, n: number): string {
@@ -28,38 +49,20 @@ function pct(rate: number, due: number): string {
   return due > 0 ? `${Math.round(rate * 100)}%` : "untracked";
 }
 
-interface StatSummary { label: string; done: number; due: number; rate: number }
-interface GoalSnapshot {
-  title: string; notes?: string | null; timeframe: string;
-  importance?: number | null; done: number; due: number; rate: number;
-}
-interface Reflection { period: string; label: string; text: string }
-interface Category { name: string; rate: number; taskCount: number; due: number }
-
-interface AppState {
-  overall?: StatSummary;
-  byTimeframe?: StatSummary[];
-  goals?: GoalSnapshot[];
-  categories?: Category[];
-  reflections?: Reflection[];
-  profileSummary?: string | null;
-  today?: string;
-}
-
-function buildTaskContext(state: AppState): string {
+function buildTaskContext(ctx: FrontendContext): string {
   const parts: string[] = [];
-  parts.push(`TODAY: ${state.today ?? new Date().toDateString()}`);
+  parts.push(`TODAY: ${ctx.today ?? new Date().toDateString()}`);
 
-  if (state.overall) {
-    parts.push(`OVERALL FOLLOW-THROUGH: ${pct(state.overall.rate, state.overall.due)} (${state.overall.done}/${state.overall.due} tracked completions)`);
+  if (ctx.overall) {
+    parts.push(`OVERALL FOLLOW-THROUGH: ${pct(ctx.overall.rate, ctx.overall.due)} (${ctx.overall.done}/${ctx.overall.due} tracked completions)`);
   }
 
-  if (state.byTimeframe?.length) {
-    parts.push(`BY TIMEFRAME:\n${state.byTimeframe.map((s) => `  - ${s.label}: ${pct(s.rate, s.due)} (${s.done}/${s.due})`).join("\n")}`);
+  if (ctx.byTimeframe?.length) {
+    parts.push(`BY TIMEFRAME:\n${ctx.byTimeframe.map((s) => `  - ${s.label}: ${pct(s.rate, s.due)} (${s.done}/${s.due})`).join("\n")}`);
   }
 
-  if (state.goals?.length) {
-    const lines = state.goals.slice(0, 60).map((g) => {
+  if (ctx.goals?.length) {
+    const lines = ctx.goals.slice(0, 60).map((g) => {
       const imp = g.importance != null ? `, importance ${g.importance}/10` : "";
       const note = g.notes ? ` — "${cap(g.notes, 200)}"` : "";
       return `  - "${g.title}" (${g.timeframe}${imp}) — follow-through ${pct(g.rate, g.due)}${note}`;
@@ -69,18 +72,26 @@ function buildTaskContext(state: AppState): string {
     parts.push("GOALS: (none set yet)");
   }
 
-  if (state.categories?.length) {
-    const lines = state.categories.map((c) => `  - ${c.name}: ${pct(c.rate, c.due)} across ${c.taskCount} goal(s)`);
+  if (ctx.categories?.length) {
+    const lines = ctx.categories.map((c) => `  - ${c.name}: ${pct(c.rate, c.due)} across ${c.taskCount} goal(s)`);
     parts.push(`BY CATEGORY:\n${lines.join("\n")}`);
   }
 
-  if (state.reflections?.length) {
-    const lines = state.reflections.slice(0, 15).map((r) => `(${r.period}) ${r.label}:\n${cap(r.text, 600)}`);
+  if (ctx.schedule?.length) {
+    const lines = ctx.schedule.slice(0, 30).map((s) => {
+      const imp = s.importance != null ? `, importance ${s.importance}/10` : "";
+      return `  - ${s.date}: "${s.title}" (${s.timeframe}${imp}) [${s.status}]`;
+    });
+    parts.push(`SCHEDULE (today and upcoming):\n${lines.join("\n")}`);
+  }
+
+  if (ctx.reflections?.length) {
+    const lines = ctx.reflections.slice(0, 15).map((r) => `(${r.period}) ${r.label}:\n${cap(r.text, 600)}`);
     parts.push(`USER'S OWN REFLECTIONS:\n${lines.join("\n\n")}`);
   }
 
-  if (state.profileSummary) {
-    parts.push(`PSYCHOLOGICAL PROFILE:\n${cap(state.profileSummary, 2000)}`);
+  if (ctx.profileSummary) {
+    parts.push(`PSYCHOLOGICAL PROFILE:\n${cap(ctx.profileSummary, 2000)}`);
   }
 
   return parts.join("\n\n");
@@ -120,7 +131,7 @@ router.delete("/informed/messages", async (req, res): Promise<void> => {
 
 router.post("/informed/chat", async (req, res): Promise<void> => {
   const userId = req.userId!;
-  const { message } = req.body as { message?: string };
+  const { message, context } = req.body as { message?: string; context?: FrontendContext };
   if (!message?.trim()) {
     res.status(400).json({ error: "Message is required" });
     return;
@@ -131,14 +142,11 @@ router.post("/informed/chat", async (req, res): Promise<void> => {
   res.setHeader("Connection", "keep-alive");
 
   try {
-    // Load everything in parallel
-    const [history, userStateRow, globalDocs, projects] = await Promise.all([
+    // Load history + user documents + projects in parallel
+    const [history, globalDocs, projects] = await Promise.all([
       db.select().from(informedMessagesTable)
         .where(eq(informedMessagesTable.userId, userId))
         .orderBy(informedMessagesTable.createdAt),
-      db.select().from(userStateTable)
-        .where(eq(userStateTable.userId, userId))
-        .limit(1),
       db.select({ name: documentsTable.name, text: documentsTable.extractedText })
         .from(documentsTable)
         .where(eq(documentsTable.userId, userId)),
@@ -147,7 +155,7 @@ router.post("/informed/chat", async (req, res): Promise<void> => {
         .orderBy(desc(projectsTable.updatedAt)),
     ]);
 
-    // Load project messages and documents for each project (up to 5 most recent)
+    // Load recent project messages + docs for top 5 projects
     const recentProjects = projects.slice(0, 5);
     const projectDetails = await Promise.all(
       recentProjects.map(async (p) => {
@@ -170,9 +178,8 @@ router.post("/informed/chat", async (req, res): Promise<void> => {
       id: randomUUID(), userId, role: "user", content: message.trim(),
     });
 
-    // Build context blocks
-    const appState = (userStateRow[0]?.data ?? {}) as AppState;
-    const taskContext = buildTaskContext(appState);
+    // Build context from frontend-supplied data (always accurate, not keyed by server userId)
+    const taskContext = context ? buildTaskContext(context) : "No task/goal data available.";
 
     let projectContext = "";
     if (projectDetails.length > 0) {
@@ -187,7 +194,9 @@ router.post("/informed/chat", async (req, res): Promise<void> => {
           `PROJECT: "${project.name}"`,
           project.description ? `Description: ${project.description}` : null,
           docs.length ? `Documents:\n${docText}` : null,
-          messages.length ? `Recent conversation (last ${messages.length} messages):\n${cap(recent, MAX_PROJECT_MSG_CHARS)}` : "No conversation yet.",
+          messages.length
+            ? `Recent conversation:\n${cap(recent, MAX_PROJECT_MSG_CHARS)}`
+            : "No conversation yet.",
         ].filter(Boolean).join("\n");
       });
       projectContext = `USER'S PROJECTS:\n\n${sections.join("\n\n---\n\n")}`;
@@ -221,11 +230,11 @@ How to use this knowledge:
 - When they ask about their projects, you already know the context — don't ask them to re-explain.
 - When they ask "what should I work on today?", look at their goals, follow-through patterns, and projects and give a specific, reasoned answer.
 - When they ask open-ended questions, give sharp, honest answers grounded in their specific situation.
-- You can help with ANYTHING — writing, coding, analysis, brainstorming — but you always have this person's full context available to make your help more relevant.
+- You can help with ANYTHING — writing, coding, analysis, brainstorming — but you always have this person's full context available.
 - Be direct, honest, and specific. A sharp advisor who actually knows their situation, not a generic chatbot.
 - Never make up facts about their data. If you don't see something in the context, say so.`;
 
-    // Build conversation for Claude
+    // Build conversation for Claude (exclude the message just saved; it goes in convo below)
     const convo = history.slice(-MAX_HISTORY).map((m) => ({
       role: m.role as "user" | "assistant",
       content: m.content,

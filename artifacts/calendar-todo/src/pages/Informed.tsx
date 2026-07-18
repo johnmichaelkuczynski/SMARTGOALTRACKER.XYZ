@@ -1,8 +1,11 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Send, Trash2, Bot, User, Loader2, Info, X,
 } from "lucide-react";
+import { useStore } from "@/lib/storage";
+import { buildAssistantContext } from "@/lib/assistantContext";
+import type { PsychAnalysis } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -119,8 +122,24 @@ function MessageContent({ content }: { content: string }) {
   return <div className="space-y-1">{elements}</div>;
 }
 
+const ANALYSIS_KEY = "goal-tracker:psych-analysis";
+
+function loadAnalysis(): PsychAnalysis | null {
+  try {
+    const raw = localStorage.getItem(ANALYSIS_KEY);
+    return raw ? (JSON.parse(raw) as PsychAnalysis) : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function Informed() {
   const qc = useQueryClient();
+  const { tasks, completions, journal } = useStore();
+  const context = useMemo(
+    () => buildAssistantContext(tasks, completions, journal, loadAnalysis()),
+    [tasks, completions, journal],
+  );
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
@@ -165,7 +184,7 @@ export default function Informed() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({ message: text, context }),
         signal: abort.signal,
       });
 

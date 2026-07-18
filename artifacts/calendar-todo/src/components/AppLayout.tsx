@@ -114,21 +114,19 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           </Button>
           <UserMenu />
         </div>
-        <nav className="max-w-6xl mx-auto px-6 flex gap-1 -mb-px overflow-x-auto">
+        <nav className="max-w-6xl mx-auto px-6 flex gap-0 -mb-px">
           {NAV.map((n) => {
             const active = location === n.href;
-            const Icon = n.icon;
             return (
               <Link
                 key={n.href}
                 href={n.href}
-                className={`px-4 py-3 text-sm flex items-center gap-2 border-b-2 transition-colors whitespace-nowrap ${
+                className={`px-3 py-2.5 text-sm border-b-2 transition-colors whitespace-nowrap ${
                   active
-                    ? "border-primary text-foreground"
+                    ? "border-primary text-foreground font-medium"
                     : "border-transparent text-muted-foreground hover:text-foreground"
                 }`}
               >
-                <Icon className="h-4 w-4" />
                 {n.label}
               </Link>
             );
@@ -136,14 +134,13 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           {isAdmin && (
             <Link
               href="/admin"
-              className={`px-4 py-3 text-sm flex items-center gap-2 border-b-2 transition-colors whitespace-nowrap ${
+              className={`px-3 py-2.5 text-sm border-b-2 transition-colors whitespace-nowrap ${
                 location === "/admin"
-                  ? "border-primary text-foreground"
+                  ? "border-primary text-foreground font-medium"
                   : "border-transparent text-muted-foreground hover:text-foreground"
               }`}
             >
-              <ShieldCheck className="h-4 w-4" />
-              Administrative
+              Admin
             </Link>
           )}
         </nav>
