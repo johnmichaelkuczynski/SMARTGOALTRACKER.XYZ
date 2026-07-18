@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  Send, Trash2, Bot, User, Loader2, Info, X,
+  Send, Trash2, Bot, User, Loader2, Info, X, Copy, Check,
 } from "lucide-react";
 import { useStore } from "@/lib/storage";
 import { buildAssistantContext } from "@/lib/assistantContext";
@@ -120,6 +120,33 @@ function MessageContent({ content }: { content: string }) {
   }
 
   return <div className="space-y-1">{elements}</div>;
+}
+
+function CopyButton({ text, light }: { text: string; light?: boolean }) {
+  const [copied, setCopied] = useState(false);
+  function copy() {
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      title="Copy"
+      className={`shrink-0 p-1 rounded transition-opacity opacity-0 group-hover:opacity-100 ${
+        light
+          ? "text-white/60 hover:text-white hover:bg-white/20"
+          : "text-muted-foreground hover:text-foreground hover:bg-muted"
+      }`}
+    >
+      {copied
+        ? <Check className="h-3.5 w-3.5" />
+        : <Copy className="h-3.5 w-3.5" />
+      }
+    </button>
+  );
 }
 
 const ANALYSIS_KEY = "goal-tracker:psych-analysis";
@@ -354,14 +381,24 @@ export default function Informed() {
                       <Bot className="h-4 w-4 text-violet-600 dark:text-violet-400" />
                     </div>
                   )}
-                  <div className={`max-w-[80%] ${m.role === "user" ? "" : ""}`}>
+                  <div className="max-w-[80%] group">
                     <div
-                      className={`rounded-2xl px-4 py-3 ${
+                      className={`relative rounded-2xl px-4 py-3 ${
                         m.role === "user"
-                          ? "bg-primary text-primary-foreground rounded-br-md"
+                          ? "bg-primary text-primary-foreground rounded-br-md selection:bg-white/30 selection:text-white"
                           : "bg-muted text-foreground rounded-bl-md"
                       }`}
                     >
+                      {m.role === "user" && (
+                        <div className="absolute -top-2 -left-8 flex">
+                          <CopyButton text={m.content} light />
+                        </div>
+                      )}
+                      {m.role === "assistant" && (
+                        <div className="absolute -top-2 -right-8 flex">
+                          <CopyButton text={m.content} />
+                        </div>
+                      )}
                       {m.role === "assistant"
                         ? <MessageContent content={m.content} />
                         : <p className="text-sm leading-relaxed whitespace-pre-wrap">{m.content}</p>
