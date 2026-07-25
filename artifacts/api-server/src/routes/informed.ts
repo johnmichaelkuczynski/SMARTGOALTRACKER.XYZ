@@ -168,21 +168,17 @@ router.get("/informed/conversations/:id/messages", async (req, res): Promise<voi
 
 router.post("/informed/chat", async (req, res): Promise<void> => {
   const userId = req.userId!;
-  const { message, conversationId, context, imageData, imageMediaType, documentData, documentMediaType, documentName, documentText } = req.body as {
+  const { message, conversationId, context, images, documents } = req.body as {
     message?: string;
     conversationId?: string;
     context?: FrontendContext;
-    imageData?: string;
-    imageMediaType?: string;
-    documentData?: string;   // base64-encoded PDF
-    documentMediaType?: string;
-    documentName?: string;
-    documentText?: string;   // pre-read text (for TXT files)
+    images?: Array<{ data: string; mediaType: string; name?: string }>;
+    documents?: Array<{ name: string; mediaType: string; text?: string; data?: string }>;
   };
 
-  const hasImage = !!(imageData && imageMediaType);
-  const hasDocument = !!(documentData || documentText);
-  if (!message?.trim() && !hasImage && !hasDocument) {
+  const hasImages = !!(images?.length);
+  const hasDocs = !!(documents?.length);
+  if (!message?.trim() && !hasImages && !hasDocs) {
     res.status(400).json({ error: "Message, image, or document is required" });
     return;
   }
@@ -222,51 +218,71 @@ router.post("/informed/chat", async (req, res): Promise<void> => {
       }),
     );
 
-    // Run Azure OCR on image (if present)
-    let ocrText = "";
-    if (hasImage && imageData && imageMediaType) {
-      try {
-        ocrText = await azureOcr(imageData, imageMediaType);
-      } catch (err) {
-        req.log.warn({ err }, "Azure OCR failed, continuing without OCR text");
+    // Run Azure OCR on all images in parallel
+    const ocrParts: string[] = [];
+    if (hasImages && images) {
+      await Promise.all(images.map(async (img, idx) => {
+        try {
+          const text = await azureOcr(img.data, img.mediaType);
+          if (text.trim()) ocrParts.push(images.length > 1 ? `[Image ${idx + 1} OCR:\n${text}]` : `[Text extracted from image via OCR:\n${text}]`);
+        } catch (err) {
+          req.log.warn({ err }, "Azure OCR failed for image");
+        }
+      }));
+    }
+
+    // Extract text from all documents
+    const docParts: string[] = [];
+    if (hasDocs && documents) {
+      for (const doc of documents) {
+        let text = doc.text ?? "";
+        if (!text && doc.data) {
+          const buf = Buffer.from(doc.data, "base64");
+          const isDocx = doc.mediaType?.includes("wordprocessingml") || doc.mediaType?.includes("msword") || doc.name.match(/\.docx?$/i);
+          const isPdf = doc.mediaType === "application/pdf" || doc.name.endsWith(".pdf");
+          try {
+            if (isPdf) {
+              const parsed = await pdfParse(buf);
+              text = parsed.text ?? "";
+            } else if (isDocx) {
+              const result = await mammoth.extractRawText({ buffer: buf });
+              text = result.value ?? "";
+            }
+          } catch (err) {
+            req.log.warn({ err }, "Document parse failed");
+          }
+        }
+        if (text.trim()) docParts.push(`[Contents of "${doc.name}":\n${cap(text.trim(), 40_000)}]`);
       }
     }
 
-    // Extract text from uploaded document (PDF, DOCX, DOC, or TXT)
-    let extractedDocText = documentText ?? "";
-    if (!extractedDocText && documentData) {
-      const buf = Buffer.from(documentData, "base64");
-      const isDocx = documentMediaType?.includes("wordprocessingml") || documentMediaType?.includes("msword") || documentName?.match(/\.docx?$/i);
-      const isPdf = documentMediaType === "application/pdf" || documentName?.endsWith(".pdf");
-      try {
-        if (isPdf) {
-          const parsed = await pdfParse(buf);
-          extractedDocText = parsed.text ?? "";
-        } else if (isDocx) {
-          const result = await mammoth.extractRawText({ buffer: buf });
-          extractedDocText = result.value ?? "";
-        }
-      } catch (err) {
-        req.log.warn({ err }, "Document parse failed, continuing without document text");
-      }
-    }
+    // Build attachments JSON for storage (images store data for thumbnail re-render; docs store name/type only)
+    const storedAttachments = [
+      ...(images?.map((img) => ({ type: "image", name: img.name ?? "image", mediaType: img.mediaType, data: img.data })) ?? []),
+      ...(documents?.map((doc) => ({ type: "document", name: doc.name, mediaType: doc.mediaType })) ?? []),
+    ];
 
     // Save user message
     const isFirstMessage = history.length === 0;
     const userText = message?.trim() ?? "";
-    const contentLabel = userText || (hasDocument ? `[${documentName ?? "document"}]` : "[image]");
+    const contentLabel = userText
+      || (hasDocs && documents!.length === 1 ? `[${documents![0].name}]` : hasDocs ? `[${documents!.length} documents]` : "")
+      || (hasImages && images!.length === 1 ? "[image]" : hasImages ? `[${images!.length} images]` : "");
     await db.insert(informedMessagesTable).values({
       id: randomUUID(),
       userId,
       conversationId,
       role: "user",
-      content: contentLabel,
-      imageData: hasImage ? imageData : null,
-      imageMediaType: hasImage ? imageMediaType : null,
+      content: contentLabel || "[message]",
+      imageData: images?.[0]?.data ?? null,
+      imageMediaType: images?.[0]?.mediaType ?? null,
+      attachments: JSON.stringify(storedAttachments),
     });
 
     // Auto-title from first message
-    const titleSource = userText || (hasDocument ? (documentName ?? "Document") : hasImage ? "Image" : "New chat");
+    const titleSource = userText
+      || (hasDocs ? documents![0].name : "")
+      || (hasImages ? "Image" : "New chat");
     if (isFirstMessage) {
       await db.update(informedConversationsTable)
         .set({ title: titleFromMessage(titleSource), updatedAt: new Date() })
@@ -326,21 +342,45 @@ How to use this knowledge:
 - Be direct, honest, and specific. A sharp advisor who actually knows their situation, not a generic chatbot.
 - Never make up facts about their data. If you don't see something in the context, say so.`;
 
-    // Build conversation history for Claude — include images for stored messages
+    // Build conversation history for Claude — reconstruct images from stored attachments
     const convo: MessageParam[] = history.slice(-MAX_HISTORY).map((m) => {
-      if (m.role === "user" && m.imageData && m.imageMediaType) {
-        return buildUserMessage(m.content === "[image]" ? "" : m.content, m.imageData, m.imageMediaType);
+      if (m.role !== "user") return { role: "assistant" as const, content: m.content };
+
+      // Parse stored attachments (new format) or fall back to legacy imageData column
+      let storedImgs: Array<{ data: string; mediaType: string }> = [];
+      if (m.attachments) {
+        try {
+          const atts = JSON.parse(m.attachments) as Array<{ type: string; data?: string; mediaType?: string }>;
+          storedImgs = atts.filter((a) => a.type === "image" && a.data && a.mediaType).map((a) => ({ data: a.data!, mediaType: a.mediaType! }));
+        } catch { /* ignore */ }
+      } else if (m.imageData && m.imageMediaType) {
+        storedImgs = [{ data: m.imageData, mediaType: m.imageMediaType }];
       }
-      return { role: m.role as "user" | "assistant", content: m.content };
+
+      const textContent = (m.content.startsWith("[") && m.content.endsWith("]")) ? "" : m.content;
+      if (storedImgs.length > 0) {
+        const blocks: (ImageBlockParam | TextBlockParam)[] = storedImgs.map((img) => ({
+          type: "image" as const,
+          source: { type: "base64" as const, media_type: img.mediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp", data: img.data },
+        }));
+        if (textContent) blocks.push({ type: "text", text: textContent });
+        return { role: "user" as const, content: blocks };
+      }
+      return { role: "user" as const, content: textContent || m.content };
     });
 
-    // Append current message — combine user text + OCR text + document text
-    const fullUserText = [
-      userText,
-      ocrText ? `[Text extracted from image via OCR:\n${ocrText}]` : "",
-      extractedDocText ? `[Contents of attached document "${documentName ?? "document"}":\n${cap(extractedDocText, 40_000)}]` : "",
-    ].filter(Boolean).join("\n\n");
-    convo.push(buildUserMessage(fullUserText, imageData, imageMediaType));
+    // Append current message — all images + OCR + all doc texts
+    const fullUserText = [userText, ...ocrParts, ...docParts].filter(Boolean).join("\n\n");
+    if (hasImages && images) {
+      const blocks: (ImageBlockParam | TextBlockParam)[] = images.map((img) => ({
+        type: "image" as const,
+        source: { type: "base64" as const, media_type: img.mediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp", data: img.data },
+      }));
+      if (fullUserText) blocks.push({ type: "text", text: fullUserText });
+      convo.push({ role: "user", content: blocks });
+    } else {
+      convo.push({ role: "user", content: fullUserText || userText });
+    }
 
     let fullResponse = "";
     const stream = anthropic.messages.stream({

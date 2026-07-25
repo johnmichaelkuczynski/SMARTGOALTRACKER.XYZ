@@ -10,6 +10,7 @@ export const informedMessagesTable = pgTable(
     content: text("content").notNull(),
     imageData: text("image_data"),
     imageMediaType: text("image_media_type"),
+    attachments: text("attachments"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
