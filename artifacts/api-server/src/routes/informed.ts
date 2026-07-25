@@ -11,7 +11,7 @@ import {
   projectMessagesTable,
   projectDocumentsTable,
 } from "@workspace/db";
-import type { MessageParam, ImageBlockParam, TextBlockParam } from "@anthropic-ai/sdk/resources/messages";
+import type { MessageParam, ImageBlockParam, TextBlockParam, DocumentBlockParam } from "@anthropic-ai/sdk/resources/messages";
 import { createRequire } from "module";
 import { azureOcr } from "../lib/azureOcr";
 import {
@@ -24,8 +24,6 @@ import {
 } from "../services/tractatusMemory";
 
 const _require = createRequire(import.meta.url);
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const pdfParse = _require("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mammoth = _require("mammoth") as { extractRawText: (opts: { buffer: Buffer }) => Promise<{ value: string }> };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -356,28 +354,43 @@ router.post("/informed/chat", async (req, res): Promise<void> => {
       }));
     }
 
-    // Extract text from all documents
-    const docParts: string[] = [];
+    // Build document content blocks for Claude
+    // PDFs are sent as native base64 document blocks (Claude reads them directly).
+    // DOCX/DOC: extract via mammoth → plain-text document block.
+    // TXT: plain-text document block.
+    const docBlocks: DocumentBlockParam[] = [];
     if (hasDocs && documents) {
       for (const doc of documents) {
-        let text = doc.text ?? "";
-        if (!text && doc.data) {
-          const buf = Buffer.from(doc.data, "base64");
-          const isDocx = doc.mediaType?.includes("wordprocessingml") || doc.mediaType?.includes("msword") || doc.name.match(/\.docx?$/i);
-          const isPdf = doc.mediaType === "application/pdf" || doc.name.endsWith(".pdf");
+        const isPdf  = doc.mediaType === "application/pdf" || doc.name.toLowerCase().endsWith(".pdf");
+        const isDocx = !!(doc.mediaType?.includes("wordprocessingml") || doc.mediaType?.includes("msword") || doc.name.match(/\.docx?$/i));
+        const isText = doc.mediaType === "text/plain" || doc.name.toLowerCase().endsWith(".txt");
+
+        if (isPdf && doc.data) {
+          // Send PDF directly — Claude natively reads base64 PDF document blocks
+          docBlocks.push({
+            type: "document",
+            source: { type: "base64", media_type: "application/pdf", data: doc.data },
+          } as DocumentBlockParam);
+        } else if (isDocx && doc.data) {
           try {
-            if (isPdf) {
-              const parsed = await pdfParse(buf);
-              text = parsed.text ?? "";
-            } else if (isDocx) {
-              const result = await mammoth.extractRawText({ buffer: buf });
-              text = result.value ?? "";
+            const buf = Buffer.from(doc.data, "base64");
+            const result = await mammoth.extractRawText({ buffer: buf });
+            const extracted = result.value?.trim() ?? "";
+            if (extracted) {
+              docBlocks.push({
+                type: "document",
+                source: { type: "text", media_type: "text/plain", data: cap(extracted, 80_000) },
+              } as DocumentBlockParam);
             }
           } catch (err) {
-            req.log.warn({ err }, "Document parse failed");
+            req.log.warn({ err, name: doc.name }, "DOCX parse failed");
           }
+        } else if (isText && doc.text?.trim()) {
+          docBlocks.push({
+            type: "document",
+            source: { type: "text", media_type: "text/plain", data: cap(doc.text.trim(), 80_000) },
+          } as DocumentBlockParam);
         }
-        if (text.trim()) docParts.push(`[Contents of "${doc.name}":\n${cap(text.trim(), 40_000)}]`);
       }
     }
 
@@ -550,17 +563,25 @@ How to use this knowledge:
       return { role: "user" as const, content: textContent || m.content };
     }));
 
-    // Append current message
-    const fullUserText = [userText, ...ocrParts, ...docParts].filter(Boolean).join("\n\n");
-    if (hasImages && images) {
-      const blocks: (ImageBlockParam | TextBlockParam)[] = images.map((img) => ({
-        type: "image" as const,
-        source: { type: "base64" as const, media_type: img.mediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp", data: img.data },
-      }));
+    // Append current message — images + document blocks + text in one content array
+    const fullUserText = [userText, ...ocrParts].filter(Boolean).join("\n\n");
+    const hasBlocks = hasImages || docBlocks.length > 0;
+
+    if (hasBlocks) {
+      const blocks: (ImageBlockParam | TextBlockParam | DocumentBlockParam)[] = [];
+      if (hasImages && images) {
+        for (const img of images) {
+          blocks.push({
+            type: "image",
+            source: { type: "base64", media_type: img.mediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp", data: img.data },
+          });
+        }
+      }
+      blocks.push(...docBlocks);
       if (fullUserText) blocks.push({ type: "text", text: fullUserText });
       convo.push({ role: "user", content: blocks });
     } else {
-      convo.push({ role: "user", content: fullUserText || userText });
+      convo.push({ role: "user", content: fullUserText || userText || "(no text)" });
     }
 
     let fullResponse = "";
