@@ -315,24 +315,32 @@ export default function Informed() {
     : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
   const handleDocumentFile = useCallback(async (file: File) => {
-    const isText = file.type === "text/plain" || file.name.endsWith(".txt");
-    const isPdf = file.type === "application/pdf" || file.name.endsWith(".pdf");
-    if (!isText && !isPdf) return;
+    const name = file.name.toLowerCase();
+    const isText = file.type === "text/plain" || name.endsWith(".txt");
+    const isPdf  = file.type === "application/pdf" || name.endsWith(".pdf");
+    const isDocx = file.type.includes("wordprocessingml") || name.endsWith(".docx");
+    const isDoc  = file.type === "application/msword" || name.endsWith(".doc");
+    if (!isText && !isPdf && !isDocx && !isDoc) return;
 
-    setPendingImage(null); // clear any pending image
+    setPendingImage(null);
     const sizeLabel = formatSize(file.size);
 
     if (isText) {
       const text = await file.text();
       setPendingDocument({ name: file.name, mediaType: "text/plain", text, sizeLabel });
     } else {
-      // PDF — read as base64, server will parse
+      // PDF / DOCX / DOC — send as base64; server extracts text
+      const mediaType = isPdf
+        ? "application/pdf"
+        : isDocx
+        ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        : "application/msword";
       const buf = await file.arrayBuffer();
       const bytes = new Uint8Array(buf);
       let binary = "";
       for (const b of bytes) binary += String.fromCharCode(b);
       const data = btoa(binary);
-      setPendingDocument({ name: file.name, mediaType: "application/pdf", data, sizeLabel });
+      setPendingDocument({ name: file.name, mediaType, data, sizeLabel });
     }
     textareaRef.current?.focus();
   }, []);
@@ -491,7 +499,7 @@ export default function Informed() {
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*,.pdf,.txt,application/pdf,text/plain"
+        accept="image/*,.pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];

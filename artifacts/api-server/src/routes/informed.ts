@@ -12,8 +12,14 @@ import {
   projectDocumentsTable,
 } from "@workspace/db";
 import type { MessageParam, ImageBlockParam, TextBlockParam } from "@anthropic-ai/sdk/resources/messages";
+import { createRequire } from "module";
 import { azureOcr } from "../lib/azureOcr";
-import pdfParse from "pdf-parse";
+
+const _require = createRequire(import.meta.url);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const pdfParse = _require("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mammoth = _require("mammoth") as { extractRawText: (opts: { buffer: Buffer }) => Promise<{ value: string }> };
 
 const router: IRouter = Router();
 const MODEL = "claude-sonnet-4-6";
@@ -226,15 +232,22 @@ router.post("/informed/chat", async (req, res): Promise<void> => {
       }
     }
 
-    // Extract text from uploaded document (PDF or TXT)
+    // Extract text from uploaded document (PDF, DOCX, DOC, or TXT)
     let extractedDocText = documentText ?? "";
-    if (!extractedDocText && documentData && documentMediaType === "application/pdf") {
+    if (!extractedDocText && documentData) {
+      const buf = Buffer.from(documentData, "base64");
+      const isDocx = documentMediaType?.includes("wordprocessingml") || documentMediaType?.includes("msword") || documentName?.match(/\.docx?$/i);
+      const isPdf = documentMediaType === "application/pdf" || documentName?.endsWith(".pdf");
       try {
-        const buf = Buffer.from(documentData, "base64");
-        const parsed = await pdfParse(buf);
-        extractedDocText = parsed.text ?? "";
+        if (isPdf) {
+          const parsed = await pdfParse(buf);
+          extractedDocText = parsed.text ?? "";
+        } else if (isDocx) {
+          const result = await mammoth.extractRawText({ buffer: buf });
+          extractedDocText = result.value ?? "";
+        }
       } catch (err) {
-        req.log.warn({ err }, "PDF parse failed, continuing without document text");
+        req.log.warn({ err }, "Document parse failed, continuing without document text");
       }
     }
 
