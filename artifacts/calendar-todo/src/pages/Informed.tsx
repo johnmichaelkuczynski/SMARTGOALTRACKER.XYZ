@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Send, Trash2, Bot, User, Loader2, Info, X, Copy, Check,
   Plus, MessageSquare, ChevronLeft, ChevronRight, ImageIcon, Paperclip,
-  FileText, Square, Download, CornerDownRight,
+  FileText, Square, Download, CornerDownRight, Mic, MicOff,
 } from "lucide-react";
 import { useStore, deviceId } from "@/lib/storage";
 import { buildAssistantContext } from "@/lib/assistantContext";
@@ -249,10 +249,14 @@ export default function Informed() {
   const [streamError, setStreamError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [showInfo, setShowInfo] = useState(false);
+  const [isDictating, setIsDictating] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null);
+  const isDictatingRef = useRef(false);
 
   // ── Conversations list ──────────────────────────────────────────────────────
 
@@ -512,6 +516,80 @@ export default function Informed() {
       textareaRef.current?.focus();
     }
   }, [input, pendingAttachments, streaming, activeId, context, qc]);
+
+  // ── Dictation (Web Speech API) ───────────────────────────────────────────────
+
+  const toggleDictation = useCallback(() => {
+    if (isDictatingRef.current) {
+      isDictatingRef.current = false;
+      recognitionRef.current?.stop();
+      recognitionRef.current = null;
+      setIsDictating(false);
+      return;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SR = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
+    if (!SR) {
+      setStreamError("Speech recognition is not supported in this browser. Use Chrome or Edge.");
+      return;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const recognition = new SR() as any;
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+
+    // baseText = what was in the box before the current final-transcript segment
+    let baseText = "";
+    setInput((prev) => { baseText = prev; return prev; });
+
+    recognition.onresult = (e: SpeechRecognitionEvent) => {
+      let interim = "";
+      let finalChunk = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) finalChunk += e.results[i][0].transcript;
+        else interim += e.results[i][0].transcript;
+      }
+      if (finalChunk) {
+        const trimmed = finalChunk.trim();
+        baseText = baseText
+          ? (baseText.trimEnd() + " " + trimmed)
+          : trimmed;
+      }
+      const displayed = interim.trim()
+        ? (baseText ? baseText.trimEnd() + " " + interim.trim() : interim.trim())
+        : baseText;
+      setInput(displayed);
+    };
+
+    recognition.onerror = (e: SpeechRecognitionErrorEvent) => {
+      if (e.error !== "aborted" && e.error !== "no-speech") {
+        setStreamError(`Dictation error: ${e.error}`);
+      }
+    };
+
+    recognition.onend = () => {
+      // Auto-restart if user hasn't explicitly stopped
+      if (isDictatingRef.current && recognitionRef.current === recognition) {
+        try { recognition.start(); } catch { /* ignore */ }
+      }
+    };
+
+    recognitionRef.current = recognition;
+    isDictatingRef.current = true;
+    setIsDictating(true);
+    recognition.start();
+  }, []);
+
+  // Stop dictation when component unmounts
+  useEffect(() => {
+    return () => {
+      isDictatingRef.current = false;
+      recognitionRef.current?.stop();
+    };
+  }, []);
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -927,6 +1005,18 @@ export default function Informed() {
             >
               <Paperclip className="h-4 w-4" />
             </button>
+            <button
+              type="button"
+              onClick={toggleDictation}
+              title={isDictating ? "Stop dictation" : "Dictate into chat"}
+              className={`shrink-0 p-2.5 rounded-xl border transition-colors ${
+                isDictating
+                  ? "border-red-400 bg-red-50 dark:bg-red-950/30 text-red-500 animate-pulse"
+                  : "border-border text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+            >
+              {isDictating ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+            </button>
             <textarea
               ref={textareaRef}
               value={input}
@@ -934,12 +1024,18 @@ export default function Informed() {
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
               placeholder={
-                pendingAttachments.length > 0
+                isDictating
+                  ? "Listening… speak now"
+                  : pendingAttachments.length > 0
                   ? "Add a message (optional)… or press Enter to send"
                   : "Message Claude… (Enter to send, Shift+Enter for newline)"
               }
               rows={2}
-              className="flex-1 resize-none rounded-xl border border-border bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50 placeholder:text-muted-foreground"
+              className={`flex-1 resize-none rounded-xl border bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 placeholder:text-muted-foreground transition-colors ${
+                isDictating
+                  ? "border-red-400 focus:ring-red-400/50"
+                  : "border-border focus:ring-violet-500/50"
+              }`}
             />
             {streaming ? (
               <Button
