@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Send, Trash2, Bot, User, Loader2, Info, X, Copy, Check,
   Plus, MessageSquare, ChevronLeft, ChevronRight, ImageIcon, Paperclip,
-  FileText, Square,
+  FileText, Square, Download,
 } from "lucide-react";
 import { useStore, deviceId } from "@/lib/storage";
 import { buildAssistantContext } from "@/lib/assistantContext";
@@ -627,6 +627,33 @@ export default function Informed() {
               <Plus className="h-3.5 w-3.5" />
               New chat
             </button>
+            {messages.length > 0 && (
+              <button
+                type="button"
+                title="Download conversation"
+                onClick={() => {
+                  const convo = conversations.find((c) => c.id === activeId);
+                  const title = convo?.title ?? "informed-chat";
+                  const lines: string[] = [`# ${title}`, `Exported: ${new Date().toLocaleString()}`, ""];
+                  for (const m of messages) {
+                    lines.push(`## ${m.role === "user" ? "You" : "Claude"} — ${new Date(m.createdAt).toLocaleString()}`);
+                    lines.push(m.content);
+                    lines.push("");
+                  }
+                  const blob = new Blob([lines.join("\n")], { type: "text/markdown" });
+                  const a = document.createElement("a");
+                  a.href = URL.createObjectURL(blob);
+                  a.download = `${title.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.md`;
+                  document.body.appendChild(a);
+                  a.click();
+                  a.remove();
+                  URL.revokeObjectURL(a.href);
+                }}
+                className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              >
+                <Download className="h-4 w-4" />
+              </button>
+            )}
             <button
               type="button"
               onClick={() => setShowInfo(!showInfo)}

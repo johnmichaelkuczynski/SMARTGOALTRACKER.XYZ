@@ -1,8 +1,6 @@
 - [Curl testing the dev server](dev-domain-curl.md) — `$REPLIT_DEV_DOMAIN` has no URL scheme; prefix `https://` or curl returns HTTP 000.
-- [Clerk + Tailwind v4 CSS setup](clerk-tailwind-v4.md) — import `@clerk/themes/shadcn.css` plainly (no `layer()` wrapper) + `tailwindcss({ optimize: false })`, or builds break.
 - [Task visibility & overdue carry-forward](task-visibility-model.md) — `task.date` controls visibility; carry overdue rows with their OWN date to keep `(taskId,date)` completion keying correct.
-- [Auth model: device UUID, no login](device-auth-model.md) — Clerk removed; device UUID in localStorage (`tally:device-id`) sent as `Authorization: Bearer <id>`; `requireAuth` extracts it; `setAuthTokenGetter` wires it in api-client.
+- [Auth model: Google OAuth + device UUID fallback](device-auth-model.md) — Google OAuth (Passport) is primary; device UUID Bearer is anonymous fallback. `getAuthToken()` is dynamic: null when logged in (session cookie handles auth), deviceId when anonymous. `setAuthTokenGetter(getAuthToken)` in App.tsx. Auth-aware sync: `syncUser(googleId)` when logged in, `syncDevice()` when not.
 - [Object-storage path ownership (IDOR)](object-path-ownership.md) — routes reading objects by client-supplied objectPath must enforce ownership (claim-on-first-use), not just auth.
 - [Embedded preview breaks cookie auth](embedded-preview-auth.md) — in-workspace iframe returns 401 on all API calls (SameSite cookie); not a bug, test in a full tab or prod.
-- [Clerk managed-key overwrite](clerk-managed-key-overwrite.md) — pasting external Clerk keys over managed ones flips status to `external` & "Failed to load Clerk JS"; fix = re-run setupClerkWhitelabelAuth().
-- [Data persistence & recovery](data-persistence-and-recovery.md) — task data lives in browser localStorage `tally:v1:${clerkUserId}`; auth-instance change orphans it (not deleted); syncUser auto-recovers richest orphan.
+- [Data persistence & recovery](data-persistence-and-recovery.md) — task data syncs to Neon DB under Google user ID (when logged in) or device UUID (anonymous). `syncUser` auto-recovers richest orphan from localStorage on first login.

@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import {
   Switch,
   Route,
@@ -27,8 +28,8 @@ import ProjectDetail from "@/pages/ProjectDetail";
 import Informed from "@/pages/Informed";
 import { SignInPage } from "@/pages/AuthPages";
 import { AppLayout } from "@/components/AppLayout";
-import { useServerSync } from "@/lib/useServerSync";
-import { deviceId } from "@/lib/storage";
+import { useSyncStatus } from "@/lib/storage";
+import { deviceId, syncDevice, syncUser, setAuthToken, getAuthToken } from "@/lib/storage";
 import { setAuthTokenGetter } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/useAuth";
 
@@ -36,11 +37,28 @@ const queryClient = new QueryClient();
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-setAuthTokenGetter(() => deviceId);
+// Use a dynamic getter so auth-aware updates take effect immediately
+setAuthTokenGetter(getAuthToken);
 
 function AppRoutes() {
   const { data: auth, isLoading: authLoading } = useAuth();
-  const status = useServerSync();
+  const status = useSyncStatus();
+
+  // Auth-aware sync: when signed in with Google, sync under Google account ID
+  // (data persists across browsers/devices). When anonymous, sync under device UUID.
+  useEffect(() => {
+    if (authLoading) return;
+    if (auth?.authenticated && auth.user) {
+      // Logged in: drop the Bearer token (session cookie handles auth),
+      // then load/save data under the stable Google account ID
+      setAuthToken(null);
+      void syncUser(auth.user.id.toString());
+    } else {
+      // Anonymous: use device UUID Bearer token and sync under device UUID
+      setAuthToken(deviceId);
+      void syncDevice();
+    }
+  }, [authLoading, auth?.authenticated, auth?.user?.id]);
 
   if (authLoading) {
     return (

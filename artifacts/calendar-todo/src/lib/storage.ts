@@ -113,6 +113,11 @@ function findRichestOrphan(excludeKey: string): StoreState | null {
   return best;
 }
 
+// Dynamic auth token: null = let session cookie handle auth (Google); string = Bearer device UUID
+let _authToken: string | null = deviceId;
+export function setAuthToken(token: string | null): void { _authToken = token; }
+export function getAuthToken(): string | null { return _authToken; }
+
 let activeUserId: string | null = deviceId;
 // Bumped on every account transition (sign-in, switch, sign-out) so in-flight
 // loads/saves can detect they belong to a stale session and bail out.
