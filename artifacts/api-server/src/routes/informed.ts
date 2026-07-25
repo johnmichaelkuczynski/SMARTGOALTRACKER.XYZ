@@ -14,6 +14,14 @@ import {
 import type { MessageParam, ImageBlockParam, TextBlockParam } from "@anthropic-ai/sdk/resources/messages";
 import { createRequire } from "module";
 import { azureOcr } from "../lib/azureOcr";
+import {
+  buildTieredPromptContext,
+  extractDeltaFromTurn,
+  extractUserSkeleton,
+  skeletonToTier0,
+  loadAllTiers,
+  auditAgainstMemory,
+} from "../services/tractatusMemory";
 
 const _require = createRequire(import.meta.url);
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -22,6 +30,9 @@ const pdfParse = _require("pdf-parse") as (buf: Buffer) => Promise<{ text: strin
 const mammoth = _require("mammoth") as { extractRawText: (opts: { buffer: Buffer }) => Promise<{ value: string }> };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const sharp = _require("sharp") as any;
+
+/** Feature flag — defaults ON; set TRACTATUS_MEMORY_ENABLED=false to revert to flat context */
+const TRACTATUS_ENABLED = process.env.TRACTATUS_MEMORY_ENABLED !== "false";
 
 /** Convert any image buffer to JPEG (handles HEIC, HEIF, etc.) */
 async function toJpegBase64(base64: string): Promise<{ data: string; mediaType: "image/jpeg" }> {
@@ -182,6 +193,50 @@ router.get("/informed/conversations/:id/messages", async (req, res): Promise<voi
   }
 });
 
+// ── Tractatus memory status ───────────────────────────────────────────────────
+
+router.get("/informed/memory/status", async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  const jobId = `${userId}-life`;
+  const jobType = "informed_life";
+  try {
+    const tiers = await loadAllTiers(jobId, jobType);
+    res.json({
+      enabled: TRACTATUS_ENABLED,
+      jobId,
+      tiers: tiers.map((t) => ({
+        tier: t.tier,
+        nodeCount: t.nodeCount,
+        compressionCount: t.compressionCount,
+        lastUpdate: t.lastUpdate,
+      })),
+    });
+  } catch (err) {
+    req.log.error({ err }, "Memory status failed");
+    res.status(500).json({ error: "Failed to load memory status" });
+  }
+});
+
+// ── Audit endpoint ────────────────────────────────────────────────────────────
+
+router.post("/informed/audit", async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  const { text } = req.body as { text?: string };
+  if (!text?.trim()) {
+    res.status(400).json({ error: "text is required" });
+    return;
+  }
+  const jobId = `${userId}-life`;
+  const jobType = "informed_life";
+  try {
+    const report = await auditAgainstMemory(text, jobId, jobType);
+    res.json(report);
+  } catch (err) {
+    req.log.error({ err }, "Audit failed");
+    res.status(500).json({ error: "Audit failed" });
+  }
+});
+
 // ── Chat (SSE streaming) ──────────────────────────────────────────────────────
 
 router.post("/informed/chat", async (req, res): Promise<void> => {
@@ -208,6 +263,10 @@ router.post("/informed/chat", async (req, res): Promise<void> => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
+
+  // Tractatus job identifiers
+  const jobId = `${userId}-life`;
+  const jobType = "informed_life";
 
   try {
     const [history, globalDocs, projects] = await Promise.all([
@@ -236,7 +295,7 @@ router.post("/informed/chat", async (req, res): Promise<void> => {
       }),
     );
 
-    // Normalize all incoming images (convert HEIC/HEIF → JPEG, etc.) before OCR or Claude
+    // Normalize all incoming images
     if (hasImages && images) {
       for (let i = 0; i < images.length; i++) {
         try {
@@ -286,7 +345,7 @@ router.post("/informed/chat", async (req, res): Promise<void> => {
       }
     }
 
-    // Build attachments JSON for storage (images store data for thumbnail re-render; docs store name/type only)
+    // Build attachments JSON for storage
     const storedAttachments = [
       ...(images?.map((img) => ({ type: "image", name: img.name ?? "image", mediaType: img.mediaType, data: img.data })) ?? []),
       ...(documents?.map((doc) => ({ type: "document", name: doc.name, mediaType: doc.mediaType })) ?? []),
@@ -323,7 +382,38 @@ router.post("/informed/chat", async (req, res): Promise<void> => {
         .where(and(eq(informedConversationsTable.id, conversationId), eq(informedConversationsTable.userId, userId)));
     }
 
-    // Build system prompt
+    // ── Tractatus memory ───────────────────────────────────────────────────────
+    let memoryContext = "";
+    if (TRACTATUS_ENABLED) {
+      try {
+        const existingTiers = await loadAllTiers(jobId, jobType);
+        const hasTier0 = existingTiers.some((t) => t.tier === 0);
+
+        if (!hasTier0) {
+          // First use — extract skeleton from current state and store as Tier 0
+          req.log.info({ jobId }, "Tractatus: extracting initial skeleton");
+          const recentHistory = history.slice(-10).map((m) => ({ role: m.role, content: m.content }));
+
+          // Pull tasks/rules/journal from global docs as proxy if context is available
+          const stateForSkeleton = {
+            tasks: context?.goals?.map((g) => ({ title: g.title, notes: g.notes, timeframe: g.timeframe })) ?? [],
+            rules: [],
+            journal: context?.reflections?.map((r) => ({ content: r.text })) ?? [],
+          };
+
+          const skeleton = await extractUserSkeleton(userId, stateForSkeleton, recentHistory);
+          await skeletonToTier0(skeleton, jobId, jobType);
+          req.log.info({ jobId, nodes: skeleton.outline.length }, "Tractatus: Tier 0 created");
+        }
+
+        memoryContext = await buildTieredPromptContext(jobId, jobType);
+      } catch (err) {
+        req.log.error({ err }, "Tractatus memory build failed — falling back to flat context");
+        memoryContext = "";
+      }
+    }
+
+    // ── Build system prompt ────────────────────────────────────────────────────
     const taskContext = context ? buildTaskContext(context) : "No task/goal data available.";
 
     let projectContext = "";
@@ -354,7 +444,29 @@ router.post("/informed/chat", async (req, res): Promise<void> => {
       docContext = `USER'S UPLOADED DOCUMENTS:\n\n${lines.join("\n\n")}`;
     }
 
-    const systemPrompt = `You are an AI assistant with complete knowledge of this specific user's life, goals, and projects inside their Goal Tracker app. You are not a generic assistant — you know this person.
+    let systemPrompt: string;
+
+    if (TRACTATUS_ENABLED && memoryContext) {
+      systemPrompt = `You are the Informed AI for this user. You have access to a durable Tractatus memory of their goals, commitments, successes, failures, entities, and open questions.
+
+TRACTATUS MEMORY (authoritative — takes priority over any conflicting temporary context):
+${memoryContext}
+
+Rules:
+- Never contradict a REJECTS or ASSERTS entry without explicit CONFLICT_FLAG acknowledgment.
+- Prefer the memory over any temporary context that conflicts with it.
+- When the user states a new long-term commitment or corrects a previous one, it will be written into the memory after this turn.
+- Never invent facts, dates, names, or outcomes. If you do not know, say so.
+- When you detect a contradiction between what the user now says and what is in memory, flag it explicitly rather than silently adopting the new claim.
+
+CURRENT SESSION CONTEXT (short-term, may be incomplete):
+${taskContext}
+
+${projectContext}
+
+${docContext}`;
+    } else {
+      systemPrompt = `You are an AI assistant with complete knowledge of this specific user's life, goals, and projects inside their Goal Tracker app. You are not a generic assistant — you know this person.
 
 Here is everything you know about the user right now:
 
@@ -371,12 +483,12 @@ How to use this knowledge:
 - When the user sends an image, read it carefully and describe or extract all relevant information from it (OCR, analysis, etc.).
 - Be direct, honest, and specific. A sharp advisor who actually knows their situation, not a generic chatbot.
 - Never make up facts about their data. If you don't see something in the context, say so.`;
+    }
 
-    // Build conversation history for Claude — reconstruct images from stored attachments
+    // Build conversation history for Claude
     const convo: MessageParam[] = await Promise.all(history.slice(-MAX_HISTORY).map(async (m) => {
       if (m.role !== "user") return { role: "assistant" as const, content: m.content };
 
-      // Parse stored attachments (new format) or fall back to legacy imageData column
       let storedImgs: Array<{ data: string; mediaType: string }> = [];
       if (m.attachments) {
         try {
@@ -389,7 +501,6 @@ How to use this knowledge:
 
       const textContent = (m.content.startsWith("[") && m.content.endsWith("]")) ? "" : m.content;
       if (storedImgs.length > 0) {
-        // Normalize any HEIC/HEIF images stored in history
         const normalizedImgs = await Promise.all(storedImgs.map(async (img) => {
           try { return await normalizeImage(img); } catch { return img as typeof img & { mediaType: "image/jpeg" }; }
         }));
@@ -403,7 +514,7 @@ How to use this knowledge:
       return { role: "user" as const, content: textContent || m.content };
     }));
 
-    // Append current message — all images + OCR + all doc texts
+    // Append current message
     const fullUserText = [userText, ...ocrParts, ...docParts].filter(Boolean).join("\n\n");
     if (hasImages && images) {
       const blocks: (ImageBlockParam | TextBlockParam)[] = images.map((img) => ({
@@ -439,6 +550,22 @@ How to use this knowledge:
 
     res.write(`data: ${JSON.stringify({ done: true, isFirstMessage })}\n\n`);
     res.end();
+
+    // ── Post-turn: extract delta and update Tier 1 (fire-and-forget) ──────────
+    if (TRACTATUS_ENABLED && fullResponse && userText) {
+      setImmediate(async () => {
+        try {
+          const delta = await extractDeltaFromTurn(userText, fullResponse, jobId, jobType);
+          if (delta.length > 0) {
+            await updateLiveTier(jobId, jobType, delta);
+            req.log.info({ jobId, deltaNodes: delta.length }, "Tractatus: Tier 1 updated");
+          }
+        } catch (err) {
+          req.log.error({ err }, "Tractatus: post-turn delta extraction failed");
+        }
+      });
+    }
+
   } catch (err) {
     req.log.error({ err }, "Informed chat failed");
     const errMsg = err instanceof Error ? err.message : "Unknown error";

@@ -1,0 +1,227 @@
+COMPLETE INSTRUCTIONS FOR REPLIT AGENT
+Target App: Smart Goal Tracker (pnpm monorepo: calendar-todo frontend + api-server backend)
+Goal: Give the Informed LLM real, durable, Tractatus-based long-term memory that survives across sessions, compresses intelligently, resists drift/sycophancy, and can be audited.
+These instructions are self-contained. Implement exactly as specified. Do not invent alternative memory systems. The architecture is taken from the Tractatus Skeleton Fusion + Cross-Chunk Coherence documents provided by the owner.
+
+0. CURRENT STATE (DO NOT BREAK)
+
+Frontend: React + Vite + Zustand store in calendar-todo/src/lib/storage.ts
+Backend: Express in artifacts/api-server
+Informed endpoint: POST /api/informed (currently builds a flat context of tasks/rules/journal from the frontend and dumps it into Claude)
+Existing tables: users, user_state, informed_conversations, informed_messages, documents, projects
+Auth: dual (Passport Google session + Bearer device UUID)
+State sync: frontend pushes full task/rule/journal state to /api/state
+
+The new system must coexist with the existing state sync. Tractatus is an additional durable memory layer specifically for the Informed LLM and long-running goals/facts.
+
+1. DATABASE SCHEMA (Neon Postgres via Drizzle)
+Add these two tables to lib/db/src/schema.ts. Export them properly. Run migrations.
+TypeScript// tractatus_tiers
+export const tractatusTiers = pgTable("tractatus_tiers", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  jobId: uuid("job_id").notNull(),               // usually the conversationId or a dedicated "life" jobId
+  jobType: text("job_type").notNull(),           // e.g. "informed", "goal_tracker", "legal_case"
+  tier: integer("tier").notNull(),               // 0 = Skeleton (immutable), 1 = live, 2+ = compressed
+  tree: jsonb("tree").notNull(),                 // flat key:value nodes { "1.0": "ASSERTS: ...", ... }
+  nodeCount: integer("node_count").notNull().default(0),
+  parentTierId: uuid("parent_tier_id"),
+  compressionCount: integer("compression_count").notNull().default(0),
+  lastUpdate: timestamp("last_update").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  idx: index("idx_tractatus_tiers_job").on(t.jobId, t.jobType, t.tier),
+}));
+
+// tractatus_archive
+export const tractatusArchive = pgTable("tractatus_archive", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  jobId: uuid("job_id").notNull(),
+  jobType: text("job_type").notNull(),
+  tier: integer("tier").notNull(),
+  treeSnapshot: jsonb("tree_snapshot").notNull(),
+  nodeCountAtSnapshot: integer("node_count_at_snapshot").notNull(),
+  reason: text("reason").notNull(),              // 'pre_compression' | 'pre_repair' | 'manual_audit'
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  idx: index("idx_tractatus_archive_job").on(t.jobId, t.jobType, t.createdAt),
+}));
+Also add a helper column or separate small table if needed for the current “active life job” per user (or simply use a deterministic jobId such as userId + "-life" or the latest conversationId + a special job_type = "informed_life"). Prefer one persistent “life” job per user for the overall Goal Tracker memory, and conversation-specific jobs when needed.
+
+2. CREATE THE SINGLE OWNER MODULE
+Create artifacts/api-server/src/services/tractatusMemory.ts (or lib/tractatusMemory.ts if shared).
+This module is the ONLY code allowed to read/write tractatus_tiers and tractatus_archive. All other code must call these functions.
+Required exported functions (implement exactly):
+TypeScriptskeletonToTier0(skeleton: Skeleton, jobId: string, jobType: string): Promise<void>
+updateLiveTier(jobId: string, jobType: string, delta: DeltaNode[]): Promise<{ nodeCount: number; compressed: boolean }>
+compressTier(jobId: string, jobType: string, sourceTier: number): Promise<void>
+buildTieredPromptContext(jobId: string, jobType: string): Promise<string>
+loadAllTiers(jobId: string, jobType: string): Promise<Tier[]>
+auditAgainstMemory(text: string, jobId: string, jobType: string): Promise<AuditReport>
+Skeleton shape (fixed)
+TypeScriptinterface Skeleton {
+  thesis: string;                    // 1-3 sentences: user’s core life / goal commitment
+  outline: string[];                 // 8-20 high-level goal/project arcs
+  keyTerms: { term: string; definition: string }[];
+  commitmentLedger: {
+    asserts: string[];
+    rejects: string[];
+    assumes: string[];
+  };
+  entities: string[];                // people, projects, cases, institutions
+  audienceParams?: string;
+  rigorLevel?: string;
+}
+Tree format (flat, non-negotiable)
+Render for the LLM as plain lines, never nested JSON in prompts:
+text1.0: ASSERTS: <claim>
+1.1: REJECTS: <claim the user does NOT hold>
+1.2: ASSUMES: <load-bearing assumption>
+1.3: OPEN: <unresolved question>
+2.0: KEY_TERM: "term" = definition
+3.0: ENTITY: Name — role
+4.0: CROSS_REF: ...
+5.0: CONFLICT_FLAG: "claim A" vs "claim B"
+Tags allowed: ASSERTS, REJECTS, ASSUMES, OPEN, KEY_TERM, ENTITY, CROSS_REF, CONFLICT_FLAG.
+Character budgets for buildTieredPromptContext (total ≤ 15 000 characters)
+
+Tier 0 (Skeleton): 6 000 chars — never truncated
+Tier 1 (Live): 5 000 chars — newest first; truncate oldest
+Tier 2: 2 500 chars
+Tier 3+: 1 500 chars total
+
+Critical rule: REJECTS and CONFLICT_FLAG entries are never evicted. If they force the budget to be exceeded, exceed it and log a warning.
+Anti-sycophancy block (store as a single shared constant, paste verbatim in three places)
+textANTI_SYCOPHANCY_CLAUSES:
+- Preserve every REJECTS entry verbatim. Do not soften, qualify, or convert a REJECTS into an OPEN.
+- Preserve every numerical value, date, proper name, citation, and quoted phrase exactly as it appears.
+- If two entries contradict, do not silently merge them. Emit a CONFLICT_FLAG entry that quotes both.
+- Defeats, negative results, and counterexamples are load-bearing. They cost more to preserve than positive claims. Preserve them anyway.
+- You are not being graded on smoothness, harmony, or readability. You are being graded on whether the tier you emit can be used to detect a hallucination two chunks from now.
+This exact block must appear (unchanged) in:
+
+The chunk / message processing prompt
+The Tier-1 delta extraction prompt
+The compression prompt
+
+Compression rules
+
+Snapshot to tractatus_archive first (reason = 'pre_compression'). Abort if snapshot fails.
+Threshold: Tier 1 ≥ 150 nodes (scale for deeper tiers).
+After compression: 100 % of REJECTS and CONFLICT_FLAG from the snapshot must survive.
+Trim source tier to its 30 most recent nodes after successful compression.
+Recurse if the higher tier itself exceeds threshold.
+
+Delta extraction after every Informed turn
+After Claude replies (or after the user message is processed), extract a delta of the form:
+TypeScripttype DeltaNode = {
+  tag: "ASSERTS" | "REJECTS" | "ASSUMES" | "OPEN" | "KEY_TERM" | "ENTITY" | "CROSS_REF" | "CONFLICT_FLAG";
+  text: string;
+  // optional metadata
+};
+Call updateLiveTier(...).
+
+3. INTEGRATION INTO THE INFORMED PIPELINE
+File to modify: artifacts/api-server/src/routes/informed.ts (and any helper that builds the Claude system prompt).
+Current flow (approximate):
+
+Frontend sends { message, conversationId, context, images, documents }
+Backend builds a flat string of tasks/rules/journal
+Sends to Claude with a system prompt claiming “complete knowledge”
+Streams reply and stores messages
+
+New required flow:
+
+Determine jobId and jobType.
+Prefer a persistent per-user life job: jobId = userId + "-life", jobType = "informed_life".
+Optionally also maintain conversation-scoped jobs (jobType = "informed_conversation").
+
+On the very first Informed message for a user (or when skeleton is missing):
+Call an LLM once to extract a Skeleton from the current full state (tasks + rules + journal + any documents + conversation so far).
+Call skeletonToTier0(skeleton, jobId, jobType).
+
+Before every Claude call:
+const memoryContext = await buildTieredPromptContext(jobId, jobType);
+Inject memoryContext into the system prompt instead of (or in addition to, but memoryContext has priority) the old flat task dump.
+
+After the assistant reply is generated and stored:
+Extract a delta report from the new user message + assistant reply (small LLM call or structured extraction).
+Call updateLiveTier(jobId, jobType, delta).
+
+Expose an audit endpoint: POST /api/informed/audit that calls auditAgainstMemory.
+
+Update the system prompt to something like:
+textYou are the Informed AI for this user. You have access to a durable Tractatus memory of their goals, commitments, successes, failures, entities, and open questions.
+
+TRACTATUS MEMORY (authoritative):
+{memoryContext}
+
+Rules:
+- Never contradict a REJECTS or ASSERTS entry without explicit CONFLICT_FLAG.
+- Prefer the memory over any temporary context that conflicts with it.
+- When the user states a new long-term commitment or corrects a previous one, it will be written into the memory after this turn.
+Keep the existing conversation history (informed_messages) — it is short-term. Tractatus is the long-term coherent memory.
+
+4. FRONTEND CHANGES (MINIMAL)
+
+In calendar-todo/src/pages/Informed.tsx (or whatever the Informed page is called):
+No major UI changes required for v1.
+Optionally add an “Audit Memory” button that calls the new audit endpoint and displays verified / contradicted / unverifiable claims.
+Optionally show a small “Memory nodes: X | Last compression: …” indicator.
+
+
+The heavy lifting stays on the backend.
+
+5. INITIAL SKELETON EXTRACTION
+Create a helper extractUserSkeleton(userId: string, currentState: any, recentMessages: any[]).
+It should call Claude (or the preferred provider) with a strict prompt that returns only the Skeleton JSON (thesis, outline, keyTerms, commitmentLedger, entities). Token budget for this call: ~2 000 output tokens max. Structure-only; no prose.
+Call this only when Tier 0 does not yet exist for the life job.
+
+6. CRITICAL RULES (NON-NEGOTIABLE)
+
+Only the tractatusMemory module may touch the two Tractatus tables.
+Tree is always rendered as flat key: value lines in prompts.
+Compression is always preceded by an archive snapshot.
+Anti-sycophancy clauses appear verbatim in the three places.
+Tier 0 is immutable for the lifetime of that job.
+REJECTS and CONFLICT_FLAG are never dropped.
+Every Informed turn that changes knowledge must produce a delta and call updateLiveTier.
+buildTieredPromptContext is the only way the Informed system prompt receives long-term memory.
+job_type discriminator is required on every call.
+Feature-flag the whole system with TRACTATUS_MEMORY_ENABLED (env or DB flag). When false, fall back to the old flat context so the app never breaks.
+
+
+7. TESTING REQUIREMENTS (MUST PASS BEFORE DECLARING DONE)
+
+Skeleton → Tier 0 round-trip preserves every asserts/rejects/assumes entry.
+updateLiveTier appends without mutating prior nodes.
+Compression triggers at the threshold and preserves 100 % of REJECTS + CONFLICT_FLAG.
+buildTieredPromptContext respects the 15 k character budget (or exceeds only for load-bearing entries and warns).
+Plant a contradiction in a test message → audit flags it as CONTRADICTED with the correct Tier 0 evidence.
+Plant a fabricated date/name → audit flags UNVERIFIABLE.
+After three forced compressions the deepest tier still contains every original REJECTS.
+An Informed conversation that spans many turns no longer loses earlier goal commitments or invents contradictions.
+
+
+8. ROLLOUT ORDER
+
+Add schema + migrate.
+Implement tractatusMemory.ts completely (all functions + anti-sycophancy constant).
+Wire skeleton extraction + skeletonToTier0 for new users / first Informed use.
+Replace the context-building logic in /api/informed with buildTieredPromptContext.
+Add delta extraction + updateLiveTier after every turn.
+Add audit endpoint.
+Feature-flag it.
+Test on the owner’s real data (legal case facts, goals, success/failure tracking).
+Only then turn the flag on by default.
+
+
+9. WHAT SUCCESS LOOKS LIKE
+After implementation, when the user has a long Informed conversation about the trust litigation, goals, deadlines, service status, forged documents, TRO strategy, etc.:
+
+The model never forgets that the freeze letter is legitimate UBS document while the document Emrick used is the one under forensic challenge.
+It never invents service dates or contradicts the chain-of-custody protocol the user already established.
+Success rates, open questions, and REJECTS (e.g. “I reject the claim that the Maryland unfreeze order is unassailable”) survive across sessions and compressions.
+The user can ask “audit the current memory against this claim” and receive a structured VERIFIED / CONTRADICTED / UNVERIFIABLE report.
+
+That is the definition of “real Tractatus-based long long long memory.”
+Implement the above exactly. Do not simplify the architecture. Report any deviation or difficulty before changing the design.
