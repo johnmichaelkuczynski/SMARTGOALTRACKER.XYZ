@@ -6,6 +6,7 @@ export const informedConversationsTable = pgTable(
     id: text("id").primaryKey(),
     userId: text("user_id").notNull(),
     title: text("title").notNull().default("New chat"),
+    parentId: text("parent_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },

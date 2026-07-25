@@ -145,10 +145,22 @@ router.get("/informed/conversations", async (req, res): Promise<void> => {
 
 router.post("/informed/conversations", async (req, res): Promise<void> => {
   const userId = req.userId!;
+  const { parentId } = req.body as { parentId?: string };
   try {
+    // Validate parentId belongs to this user
+    if (parentId) {
+      const parent = await db.select({ id: informedConversationsTable.id })
+        .from(informedConversationsTable)
+        .where(and(eq(informedConversationsTable.id, parentId), eq(informedConversationsTable.userId, userId)))
+        .limit(1);
+      if (parent.length === 0) {
+        res.status(400).json({ error: "Invalid parentId" });
+        return;
+      }
+    }
     const id = randomUUID();
     const [row] = await db.insert(informedConversationsTable)
-      .values({ id, userId, title: "New chat" })
+      .values({ id, userId, title: "New chat", parentId: parentId ?? null })
       .returning();
     res.json(row);
   } catch (err) {
@@ -269,6 +281,12 @@ router.post("/informed/chat", async (req, res): Promise<void> => {
   const jobType = "informed_life";
 
   try {
+    // Fetch current conversation row (needed for parentId)
+    const [convRow] = await db.select()
+      .from(informedConversationsTable)
+      .where(and(eq(informedConversationsTable.id, conversationId), eq(informedConversationsTable.userId, userId)))
+      .limit(1);
+
     const [history, globalDocs, projects] = await Promise.all([
       db.select().from(informedMessagesTable)
         .where(and(eq(informedMessagesTable.conversationId, conversationId), eq(informedMessagesTable.userId, userId)))
@@ -279,6 +297,24 @@ router.post("/informed/chat", async (req, res): Promise<void> => {
         .where(eq(projectsTable.userId, userId))
         .orderBy(desc(projectsTable.updatedAt)),
     ]);
+
+    // Fetch parent conversation history chain (up to 2 levels, last 20 msgs each)
+    let priorConversationContext = "";
+    if (convRow?.parentId) {
+      const parentMsgs = await db.select({ role: informedMessagesTable.role, content: informedMessagesTable.content })
+        .from(informedMessagesTable)
+        .where(and(eq(informedMessagesTable.conversationId, convRow.parentId), eq(informedMessagesTable.userId, userId)))
+        .orderBy(informedMessagesTable.createdAt);
+      if (parentMsgs.length > 0) {
+        const recent = parentMsgs.slice(-20);
+        const lines = recent.map((m) => {
+          const speaker = m.role === "user" ? "USER" : "CLAUDE";
+          const text = m.content.startsWith("[") && m.content.endsWith("]") ? "(attachment)" : cap(m.content, 600);
+          return `${speaker}: ${text}`;
+        });
+        priorConversationContext = `PRIOR CONVERSATION (this is a follow-up to that session — use it for full continuity):\n\n${lines.join("\n\n")}`;
+      }
+    }
 
     const recentProjects = projects.slice(0, 5);
     const projectDetails = await Promise.all(
@@ -464,7 +500,7 @@ ${taskContext}
 
 ${projectContext}
 
-${docContext}`;
+${docContext}${priorConversationContext ? `\n\n${priorConversationContext}` : ""}`;
     } else {
       systemPrompt = `You are an AI assistant with complete knowledge of this specific user's life, goals, and projects inside their Goal Tracker app. You are not a generic assistant — you know this person.
 
@@ -474,7 +510,7 @@ ${taskContext}
 
 ${projectContext}
 
-${docContext}
+${docContext}${priorConversationContext ? `\n\n${priorConversationContext}` : ""}
 
 How to use this knowledge:
 - When the user asks for advice, plans, or decisions, reason from their ACTUAL track record, not generic principles.

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Send, Trash2, Bot, User, Loader2, Info, X, Copy, Check,
   Plus, MessageSquare, ChevronLeft, ChevronRight, ImageIcon, Paperclip,
-  FileText, Square, Download,
+  FileText, Square, Download, CornerDownRight,
 } from "lucide-react";
 import { useStore, deviceId } from "@/lib/storage";
 import { buildAssistantContext } from "@/lib/assistantContext";
@@ -27,6 +27,7 @@ interface ConversationRow {
   id: string;
   userId: string;
   title: string;
+  parentId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -268,7 +269,10 @@ export default function Informed() {
   }, [conversations, activeId]);
 
   const createConversation = useMutation({
-    mutationFn: () => apiFetch<ConversationRow>("/api/informed/conversations", { method: "POST" }),
+    mutationFn: (parentId?: string) => apiFetch<ConversationRow>("/api/informed/conversations", {
+      method: "POST",
+      body: JSON.stringify(parentId ? { parentId } : {}),
+    }),
     onSuccess: (conv) => {
       void qc.invalidateQueries({ queryKey: ["informed-conversations"] });
       setActiveId(conv.id);
@@ -424,7 +428,10 @@ export default function Informed() {
     let convId = activeId;
     if (!convId) {
       try {
-        const conv = await apiFetch<ConversationRow>("/api/informed/conversations", { method: "POST" });
+        const conv = await apiFetch<ConversationRow>("/api/informed/conversations", {
+          method: "POST",
+          body: JSON.stringify({}),
+        });
         await qc.invalidateQueries({ queryKey: ["informed-conversations"] });
         convId = conv.id;
         setActiveId(conv.id);
@@ -567,18 +574,31 @@ export default function Informed() {
           {conversations.map((conv) => (
             <div
               key={conv.id}
-              className={`group flex items-center gap-1 rounded-lg px-2 py-1.5 cursor-pointer transition-colors ${
+              className={`group flex items-center gap-1 rounded-lg py-1.5 cursor-pointer transition-colors ${
+                conv.parentId ? "pl-4 pr-2" : "px-2"
+              } ${
                 conv.id === activeId
                   ? "bg-violet-100 dark:bg-violet-900/30 text-foreground"
                   : "hover:bg-muted text-muted-foreground hover:text-foreground"
               }`}
               onClick={() => { setActiveId(conv.id); setStreamError(null); setPendingAttachments([]); }}
             >
-              <MessageSquare className="h-3.5 w-3.5 shrink-0 opacity-60" />
+              {conv.parentId
+                ? <CornerDownRight className="h-3 w-3 shrink-0 opacity-40" />
+                : <MessageSquare className="h-3.5 w-3.5 shrink-0 opacity-60" />
+              }
               <div className="flex-1 min-w-0">
                 <div className="text-xs font-medium truncate">{conv.title}</div>
                 <div className="text-[10px] opacity-50">{relativeDateLabel(conv.updatedAt)}</div>
               </div>
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); createConversation.mutate(conv.id); }}
+                className="shrink-0 p-0.5 rounded opacity-0 group-hover:opacity-100 hover:text-violet-600 transition-all"
+                title="Follow-up chat"
+              >
+                <CornerDownRight className="h-3 w-3" />
+              </button>
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); setDeleteTarget(conv.id); }}
@@ -620,13 +640,26 @@ export default function Informed() {
           <div className="flex items-center gap-1">
             <button
               type="button"
-              onClick={() => createConversation.mutate()}
+              onClick={() => createConversation.mutate(undefined)}
               disabled={createConversation.isPending}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+              title="Start a completely new chat"
             >
               <Plus className="h-3.5 w-3.5" />
               New chat
             </button>
+            {activeId && messages.length > 0 && (
+              <button
+                type="button"
+                onClick={() => createConversation.mutate(activeId)}
+                disabled={createConversation.isPending}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-violet-600 dark:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950/30 transition-colors"
+                title="Continue this conversation in a new chat — Claude will remember what you discussed"
+              >
+                <CornerDownRight className="h-3.5 w-3.5" />
+                Follow-up
+              </button>
+            )}
             {messages.length > 0 && (
               <button
                 type="button"
