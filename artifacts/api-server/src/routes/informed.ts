@@ -20,6 +20,24 @@ const _require = createRequire(import.meta.url);
 const pdfParse = _require("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const mammoth = _require("mammoth") as { extractRawText: (opts: { buffer: Buffer }) => Promise<{ value: string }> };
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const sharp = _require("sharp") as any;
+
+/** Convert any image buffer to JPEG (handles HEIC, HEIF, etc.) */
+async function toJpegBase64(base64: string): Promise<{ data: string; mediaType: "image/jpeg" }> {
+  const buf = Buffer.from(base64, "base64");
+  const jpeg = await sharp(buf).rotate().jpeg({ quality: 88 }).toBuffer() as Buffer;
+  return { data: jpeg.toString("base64"), mediaType: "image/jpeg" };
+}
+
+const CLAUDE_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
+
+async function normalizeImage(img: { data: string; mediaType: string }): Promise<{ data: string; mediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp" }> {
+  if (CLAUDE_IMAGE_TYPES.has(img.mediaType)) {
+    return img as { data: string; mediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp" };
+  }
+  return toJpegBase64(img.data);
+}
 
 const router: IRouter = Router();
 const MODEL = "claude-sonnet-4-6";
@@ -218,6 +236,18 @@ router.post("/informed/chat", async (req, res): Promise<void> => {
       }),
     );
 
+    // Normalize all incoming images (convert HEIC/HEIF → JPEG, etc.) before OCR or Claude
+    if (hasImages && images) {
+      for (let i = 0; i < images.length; i++) {
+        try {
+          const norm = await normalizeImage(images[i]);
+          images[i] = { ...images[i], data: norm.data, mediaType: norm.mediaType };
+        } catch (err) {
+          req.log.warn({ err }, "Image normalization failed");
+        }
+      }
+    }
+
     // Run Azure OCR on all images in parallel
     const ocrParts: string[] = [];
     if (hasImages && images) {
@@ -359,7 +389,11 @@ How to use this knowledge:
 
       const textContent = (m.content.startsWith("[") && m.content.endsWith("]")) ? "" : m.content;
       if (storedImgs.length > 0) {
-        const blocks: (ImageBlockParam | TextBlockParam)[] = storedImgs.map((img) => ({
+        // Normalize any HEIC/HEIF images stored in history
+        const normalizedImgs = await Promise.all(storedImgs.map(async (img) => {
+          try { return await normalizeImage(img); } catch { return img as typeof img & { mediaType: "image/jpeg" }; }
+        }));
+        const blocks: (ImageBlockParam | TextBlockParam)[] = normalizedImgs.map((img) => ({
           type: "image" as const,
           source: { type: "base64" as const, media_type: img.mediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp", data: img.data },
         }));

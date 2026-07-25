@@ -318,12 +318,36 @@ export default function Informed() {
     : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
   const addImageFile = useCallback(async (file: File | Blob) => {
-    if (!file.type.startsWith("image/")) return;
+    const fileName = (file as File).name ?? "";
+    const lowerName = fileName.toLowerCase();
+    const isHeic = file.type === "image/heic" || file.type === "image/heif"
+      || lowerName.endsWith(".heic") || lowerName.endsWith(".heif");
+
+    // Non-image types that slipped through → ignore
+    if (!file.type.startsWith("image/") && !isHeic) return;
+
+    const localId = crypto.randomUUID();
+    const name = fileName || "image.jpg";
+    const sizeLabel = formatSize(file.size);
+
+    if (isHeic) {
+      // HEIC: browsers can't decode — send raw binary; server converts to JPEG
+      const buf = await file.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let binary = "";
+      for (const b of bytes) binary += String.fromCharCode(b);
+      const data = btoa(binary);
+      // No preview possible in browser — use null; UI shows a placeholder
+      setPendingAttachments((prev) => [...prev, {
+        localId, type: "image", name, sizeLabel,
+        data, mediaType: "image/heic", preview: undefined,
+      }]);
+      textareaRef.current?.focus();
+      return;
+    }
+
     try {
       const img = await compressImage(file);
-      const localId = crypto.randomUUID();
-      const name = (file as File).name ?? "image.jpg";
-      const sizeLabel = formatSize(file.size);
       setPendingAttachments((prev) => [...prev, { localId, type: "image", name, sizeLabel, data: img.data, mediaType: img.mediaType, preview: img.preview }]);
       textareaRef.current?.focus();
     } catch {
@@ -362,7 +386,10 @@ export default function Informed() {
   }, []);
 
   const handleAnyFile = useCallback((file: File) => {
-    if (file.type.startsWith("image/")) void addImageFile(file);
+    const lower = file.name.toLowerCase();
+    const isHeic = lower.endsWith(".heic") || lower.endsWith(".heif")
+      || file.type === "image/heic" || file.type === "image/heif";
+    if (file.type.startsWith("image/") || isHeic) void addImageFile(file);
     else void addDocumentFile(file);
   }, [addImageFile, addDocumentFile]);
 
@@ -504,7 +531,7 @@ export default function Informed() {
         ref={fileInputRef}
         type="file"
         multiple
-        accept="image/*,.pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+        accept="image/*,.heic,.heif,.pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
         className="hidden"
         onChange={(e) => {
           for (const file of Array.from(e.target.files ?? [])) handleAnyFile(file);
@@ -777,11 +804,18 @@ export default function Informed() {
               {pendingAttachments.map((att) =>
                 att.type === "image" ? (
                   <div key={att.localId} className="relative inline-block shrink-0">
-                    <img
-                      src={att.preview}
-                      alt={att.name}
-                      className="rounded-xl h-20 w-20 object-cover border border-border"
-                    />
+                    {att.preview ? (
+                      <img
+                        src={att.preview}
+                        alt={att.name}
+                        className="rounded-xl h-20 w-20 object-cover border border-border"
+                      />
+                    ) : (
+                      <div className="rounded-xl h-20 w-20 border border-border bg-muted flex flex-col items-center justify-center gap-1">
+                        <ImageIcon className="h-6 w-6 text-violet-400" />
+                        <span className="text-[9px] text-muted-foreground text-center px-1 truncate max-w-full leading-tight">HEIC</span>
+                      </div>
+                    )}
                     <button
                       type="button"
                       onClick={() => removeAttachment(att.localId)}
