@@ -28,34 +28,31 @@ import ProjectDetail from "@/pages/ProjectDetail";
 import Informed from "@/pages/Informed";
 import { SignInPage } from "@/pages/AuthPages";
 import { AppLayout } from "@/components/AppLayout";
-import { useSyncStatus } from "@/lib/storage";
-import { deviceId, syncDevice, syncUser, setAuthToken, getAuthToken } from "@/lib/storage";
+import { useSyncStatus, deviceId, syncDevice, syncUser } from "@/lib/storage";
 import { setAuthTokenGetter } from "@workspace/api-client-react";
 import { useAuth } from "@/lib/useAuth";
 
 const queryClient = new QueryClient();
-
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-// Use a dynamic getter so auth-aware updates take effect immediately
-setAuthTokenGetter(getAuthToken);
+// Always send device UUID as Bearer. Backend prefers Passport session (Google)
+// over Bearer when a valid session cookie is present — so in production the
+// Google user ID is used automatically. In the workspace iframe where SameSite
+// blocks cookies, the device UUID Bearer keeps things working.
+setAuthTokenGetter(() => deviceId);
 
 function AppRoutes() {
   const { data: auth, isLoading: authLoading } = useAuth();
   const status = useSyncStatus();
 
-  // Auth-aware sync: when signed in with Google, sync under Google account ID
-  // (data persists across browsers/devices). When anonymous, sync under device UUID.
   useEffect(() => {
     if (authLoading) return;
     if (auth?.authenticated && auth.user) {
-      // Logged in: drop the Bearer token (session cookie handles auth),
-      // then load/save data under the stable Google account ID
-      setAuthToken(null);
+      // Logged in with Google — try to sync under the stable Google account ID.
+      // If the session cookie is available (production), the backend uses the
+      // Google user ID; if blocked (iframe), falls back to device UUID Bearer.
       void syncUser(auth.user.id.toString());
     } else {
-      // Anonymous: use device UUID Bearer token and sync under device UUID
-      setAuthToken(deviceId);
       void syncDevice();
     }
   }, [authLoading, auth?.authenticated, auth?.user?.id]);

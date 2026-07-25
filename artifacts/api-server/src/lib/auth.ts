@@ -53,9 +53,7 @@ export async function setupAuth(app: Express): Promise<void> {
     console.error("Session pool error:", err);
   });
 
-  pool.on("connect", () => {
-    console.log("Session pool connected to database");
-  });
+  // pool "connect" fires on every new client — do not log it
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS "user_sessions" (

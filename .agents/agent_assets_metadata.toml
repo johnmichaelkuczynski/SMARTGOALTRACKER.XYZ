@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "df22D-1nHtWXaZ_JJzNtG"
+uri = "file://BLUEPRINT.md"
+type = "text"
+title = "Goal Tracker — Complete File Tree Blueprint"
