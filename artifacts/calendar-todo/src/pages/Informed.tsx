@@ -83,7 +83,7 @@ async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
 const MAX_DIM = 1536;
 const JPEG_QUALITY = 0.85;
 
-function compressImage(file: Blob): Promise<PendingImage> {
+function compressImage(file: Blob): Promise<{ data: string; mediaType: string; preview: string }> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
@@ -166,7 +166,7 @@ function MessageContent({ content }: { content: string }) {
     if (/^#{1,3}\s/.test(line)) {
       const level = line.match(/^(#{1,3})/)?.[1].length ?? 1;
       const text = line.replace(/^#{1,3}\s/, "");
-      const Tag = (`h${level + 2}`) as keyof JSX.IntrinsicElements;
+      const Tag = `h${level + 2}` as React.ElementType;
       elements.push(<Tag key={i} className="font-semibold mt-3 mb-1">{renderInline(text)}</Tag>);
       i++;
     } else if (/^[-*]\s/.test(line)) {
