@@ -418,6 +418,15 @@ export function setJournalEntry(period: JournalPeriod, periodKey: string, text: 
   persist();
 }
 
+/** Delete a journal entry entirely. */
+export function deleteJournalEntry(period: JournalPeriod, periodKey: string) {
+  state = {
+    ...state,
+    journal: state.journal.filter((e) => !(e.period === period && e.periodKey === periodKey)),
+  };
+  persist();
+}
+
 /** Save the user's own context for the Mind analysis. Empty text clears it. */
 export function setMindContext(text: string) {
   const trimmed = text.trim();

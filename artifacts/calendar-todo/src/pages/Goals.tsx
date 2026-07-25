@@ -145,10 +145,10 @@ function GoalCard({ goal, completions }: { goal: Task; completions: ReturnType<t
         <div className="flex-1">
           <h3 className="font-medium text-foreground leading-tight">{goal.title}</h3>
           {goal.notes && (
-            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{goal.notes}</p>
+            <p className="text-xs text-muted-foreground mt-1 leading-relaxed line-clamp-3">{goal.notes}</p>
           )}
         </div>
-        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center gap-0.5">
           <Button
             variant="ghost"
             size="icon"
@@ -161,7 +161,7 @@ function GoalCard({ goal, completions }: { goal: Task; completions: ReturnType<t
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7"
+            className="h-7 w-7 text-destructive hover:text-destructive hover:bg-destructive/10"
             onClick={() => {
               if (confirm(`Delete "${goal.title}"?`)) deleteTask(goal.id);
             }}

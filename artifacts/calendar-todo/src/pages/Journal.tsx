@@ -5,7 +5,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ImageOcrButton } from "@/components/ImageOcrButton";
 import { DocumentTextButton } from "@/components/DocumentTextButton";
 import { useStore } from "@/lib/storage";
-import { getJournalEntry, setJournalEntry } from "@/lib/storage";
+import { getJournalEntry, setJournalEntry, deleteJournalEntry } from "@/lib/storage";
 import {
   PERIODS,
   keyToDate,
