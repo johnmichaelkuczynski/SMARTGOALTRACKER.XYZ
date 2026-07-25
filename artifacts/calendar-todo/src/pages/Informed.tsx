@@ -634,16 +634,31 @@ export default function Informed() {
                 onClick={() => {
                   const convo = conversations.find((c) => c.id === activeId);
                   const title = convo?.title ?? "informed-chat";
-                  const lines: string[] = [`# ${title}`, `Exported: ${new Date().toLocaleString()}`, ""];
+                  const lines: string[] = [
+                    title.toUpperCase(),
+                    `Exported: ${new Date().toLocaleString()}`,
+                    "=".repeat(60),
+                    "",
+                  ];
                   for (const m of messages) {
-                    lines.push(`## ${m.role === "user" ? "You" : "Claude"} — ${new Date(m.createdAt).toLocaleString()}`);
-                    lines.push(m.content);
+                    const speaker = m.role === "user" ? "YOU" : "CLAUDE";
+                    const ts = new Date(m.createdAt).toLocaleString();
+                    lines.push(`${speaker}  [${ts}]`);
+                    lines.push("-".repeat(40));
+                    // Strip markdown syntax so it reads as plain text
+                    const plain = m.content
+                      .replace(/^#{1,6}\s+/gm, "")
+                      .replace(/\*\*(.+?)\*\*/g, "$1")
+                      .replace(/\*(.+?)\*/g, "$1")
+                      .replace(/`(.+?)`/g, "$1")
+                      .replace(/^\s*[-*]\s+/gm, "  - ");
+                    lines.push(plain);
                     lines.push("");
                   }
-                  const blob = new Blob([lines.join("\n")], { type: "text/markdown" });
+                  const blob = new Blob([lines.join("\n")], { type: "text/plain" });
                   const a = document.createElement("a");
                   a.href = URL.createObjectURL(blob);
-                  a.download = `${title.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.md`;
+                  a.download = `${title.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.txt`;
                   document.body.appendChild(a);
                   a.click();
                   a.remove();
