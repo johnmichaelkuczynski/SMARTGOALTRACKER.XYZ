@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Send, Trash2, Bot, User, Loader2, Info, X, Copy, Check,
   Plus, MessageSquare, ChevronLeft, ChevronRight, ImageIcon, Paperclip,
-  FileText,
+  FileText, Square,
 } from "lucide-react";
 import { useStore, deviceId } from "@/lib/storage";
 import { buildAssistantContext } from "@/lib/assistantContext";
@@ -832,14 +832,25 @@ export default function Informed() {
               rows={2}
               className="flex-1 resize-none rounded-xl border border-border bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50 placeholder:text-muted-foreground"
             />
-            <Button
-              type="button"
-              onClick={() => void sendMessage()}
-              disabled={!canSend}
-              className="px-4 rounded-xl bg-violet-600 hover:bg-violet-700 text-white shrink-0 h-[52px]"
-            >
-              {streaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            </Button>
+            {streaming ? (
+              <Button
+                type="button"
+                onClick={() => abortRef.current?.abort()}
+                className="px-4 rounded-xl bg-red-500 hover:bg-red-600 text-white shrink-0 h-[52px]"
+                title="Stop generating"
+              >
+                <Square className="h-4 w-4 fill-current" />
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                onClick={() => void sendMessage()}
+                disabled={!canSend}
+                className="px-4 rounded-xl bg-violet-600 hover:bg-violet-700 text-white shrink-0 h-[52px]"
+              >
+                <Send className="h-4 w-4" />
+              </Button>
+            )}
           </div>
           <div className="text-xs text-muted-foreground mt-1.5 text-center">
             Attach multiple images, PDFs, Word docs, or TXT · Paste or drag-drop · Powered by Claude
