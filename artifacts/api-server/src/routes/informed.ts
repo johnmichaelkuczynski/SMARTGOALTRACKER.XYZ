@@ -11,6 +11,7 @@ import {
   projectMessagesTable,
   projectDocumentsTable,
 } from "@workspace/db";
+import type { MessageParam, ImageBlockParam, TextBlockParam } from "@anthropic-ai/sdk/resources/messages";
 
 const router: IRouter = Router();
 const MODEL = "claude-sonnet-4-6";
@@ -65,10 +66,28 @@ function buildTaskContext(ctx: FrontendContext): string {
   return parts.join("\n\n");
 }
 
-/** Derive a short title from the first user message */
 function titleFromMessage(msg: string): string {
   const clean = msg.replace(/\s+/g, " ").trim();
-  return clean.length > 60 ? clean.slice(0, 57) + "…" : clean;
+  return clean.length > 60 ? clean.slice(0, 57) + "…" : clean || "Image";
+}
+
+/** Build an Anthropic message param, optionally with an image block */
+function buildUserMessage(text: string, imageData?: string | null, imageMediaType?: string | null): MessageParam {
+  if (imageData && imageMediaType) {
+    const blocks: (ImageBlockParam | TextBlockParam)[] = [
+      {
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: imageMediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+          data: imageData,
+        },
+      },
+    ];
+    if (text) blocks.push({ type: "text", text });
+    return { role: "user", content: blocks };
+  }
+  return { role: "user", content: text };
 }
 
 // ── Conversations ─────────────────────────────────────────────────────────────
@@ -141,14 +160,17 @@ router.get("/informed/conversations/:id/messages", async (req, res): Promise<voi
 
 router.post("/informed/chat", async (req, res): Promise<void> => {
   const userId = req.userId!;
-  const { message, conversationId, context } = req.body as {
+  const { message, conversationId, context, imageData, imageMediaType } = req.body as {
     message?: string;
     conversationId?: string;
     context?: FrontendContext;
+    imageData?: string;
+    imageMediaType?: string;
   };
 
-  if (!message?.trim()) {
-    res.status(400).json({ error: "Message is required" });
+  const hasImage = !!(imageData && imageMediaType);
+  if (!message?.trim() && !hasImage) {
+    res.status(400).json({ error: "Message or image is required" });
     return;
   }
   if (!conversationId) {
@@ -187,16 +209,24 @@ router.post("/informed/chat", async (req, res): Promise<void> => {
       }),
     );
 
-    // Save user message
+    // Save user message (store image alongside text)
     const isFirstMessage = history.length === 0;
+    const userText = message?.trim() ?? "";
     await db.insert(informedMessagesTable).values({
-      id: randomUUID(), userId, conversationId, role: "user", content: message.trim(),
+      id: randomUUID(),
+      userId,
+      conversationId,
+      role: "user",
+      content: userText || "[image]",
+      imageData: hasImage ? imageData : null,
+      imageMediaType: hasImage ? imageMediaType : null,
     });
 
-    // Auto-title the conversation from first message
+    // Auto-title from first message
+    const titleSource = userText || (hasImage ? "Image" : "New chat");
     if (isFirstMessage) {
       await db.update(informedConversationsTable)
-        .set({ title: titleFromMessage(message.trim()), updatedAt: new Date() })
+        .set({ title: titleFromMessage(titleSource), updatedAt: new Date() })
         .where(and(eq(informedConversationsTable.id, conversationId), eq(informedConversationsTable.userId, userId)));
     } else {
       await db.update(informedConversationsTable)
@@ -249,14 +279,20 @@ How to use this knowledge:
 - When the user asks for advice, plans, or decisions, reason from their ACTUAL track record, not generic principles.
 - When they ask about their projects, you already know the context — don't ask them to re-explain.
 - When they ask "what should I work on today?", look at their goals, follow-through patterns, and projects and give a specific, reasoned answer.
+- When the user sends an image, read it carefully and describe or extract all relevant information from it (OCR, analysis, etc.).
 - Be direct, honest, and specific. A sharp advisor who actually knows their situation, not a generic chatbot.
 - Never make up facts about their data. If you don't see something in the context, say so.`;
 
-    const convo = history.slice(-MAX_HISTORY).map((m) => ({
-      role: m.role as "user" | "assistant",
-      content: m.content,
-    }));
-    convo.push({ role: "user", content: message.trim() });
+    // Build conversation history for Claude — include images for stored messages
+    const convo: MessageParam[] = history.slice(-MAX_HISTORY).map((m) => {
+      if (m.role === "user" && m.imageData && m.imageMediaType) {
+        return buildUserMessage(m.content === "[image]" ? "" : m.content, m.imageData, m.imageMediaType);
+      }
+      return { role: m.role as "user" | "assistant", content: m.content };
+    });
+
+    // Append current message (with image if present)
+    convo.push(buildUserMessage(userText, imageData, imageMediaType));
 
     let fullResponse = "";
     const stream = anthropic.messages.stream({

@@ -8,6 +8,8 @@ export const informedMessagesTable = pgTable(
     conversationId: text("conversation_id"),
     role: text("role").notNull(),
     content: text("content").notNull(),
+    imageData: text("image_data"),
+    imageMediaType: text("image_media_type"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [

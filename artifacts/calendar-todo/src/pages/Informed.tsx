@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Send, Trash2, Bot, User, Loader2, Info, X, Copy, Check,
-  Plus, MessageSquare, ChevronLeft, ChevronRight,
+  Plus, MessageSquare, ChevronLeft, ChevronRight, ImageIcon, Paperclip,
 } from "lucide-react";
 import { useStore, deviceId } from "@/lib/storage";
 import { buildAssistantContext } from "@/lib/assistantContext";
@@ -36,7 +36,15 @@ interface MessageRow {
   conversationId: string | null;
   role: string;
   content: string;
+  imageData?: string | null;
+  imageMediaType?: string | null;
   createdAt: string;
+}
+
+interface PendingImage {
+  data: string;       // base64 without prefix
+  mediaType: string;  // e.g. "image/jpeg"
+  preview: string;    // data URL for display
 }
 
 // ── Auth-aware fetch ──────────────────────────────────────────────────────────
@@ -54,6 +62,36 @@ async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
   const data = await res.json();
   if (!res.ok) throw new Error((data as { error?: string })?.error ?? `HTTP ${res.status}`);
   return data as T;
+}
+
+// ── Image helpers ─────────────────────────────────────────────────────────────
+
+const MAX_DIM = 1536;
+const JPEG_QUALITY = 0.85;
+
+function compressImage(file: Blob): Promise<PendingImage> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      if (width > MAX_DIM || height > MAX_DIM) {
+        const scale = MAX_DIM / Math.max(width, height);
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext("2d")!.drawImage(img, 0, 0, width, height);
+      const dataUrl = canvas.toDataURL("image/jpeg", JPEG_QUALITY);
+      const base64 = dataUrl.split(",")[1];
+      resolve({ data: base64, mediaType: "image/jpeg", preview: dataUrl });
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -190,6 +228,7 @@ export default function Informed() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [input, setInput] = useState("");
+  const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
   const [streaming, setStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
   const [streamError, setStreamError] = useState<string | null>(null);
@@ -197,6 +236,7 @@ export default function Informed() {
   const [showInfo, setShowInfo] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   // ── Conversations list ──────────────────────────────────────────────────────
@@ -207,7 +247,6 @@ export default function Informed() {
     refetchOnWindowFocus: false,
   });
 
-  // Auto-select most recent conversation on first load
   useEffect(() => {
     if (!activeId && conversations.length > 0) {
       setActiveId(conversations[0].id);
@@ -220,6 +259,7 @@ export default function Informed() {
       void qc.invalidateQueries({ queryKey: ["informed-conversations"] });
       setActiveId(conv.id);
       setInput("");
+      setPendingImage(null);
       setStreamError(null);
       setStreamingContent("");
       textareaRef.current?.focus();
@@ -232,7 +272,6 @@ export default function Informed() {
       void qc.invalidateQueries({ queryKey: ["informed-conversations"] });
       void qc.invalidateQueries({ queryKey: ["informed-messages", deletedId] });
       if (activeId === deletedId) {
-        // Switch to next available or null
         const remaining = conversations.filter((c) => c.id !== deletedId);
         setActiveId(remaining.length > 0 ? remaining[0].id : null);
       }
@@ -258,13 +297,43 @@ export default function Informed() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streamingContent]);
 
+  // ── Image pick/paste ────────────────────────────────────────────────────────
+
+  const handleImageFile = useCallback(async (file: File | Blob) => {
+    if (!file.type.startsWith("image/")) return;
+    try {
+      const img = await compressImage(file);
+      setPendingImage(img);
+      textareaRef.current?.focus();
+    } catch {
+      setStreamError("Failed to process image.");
+    }
+  }, []);
+
+  // Paste handler — captures images pasted from clipboard
+  const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = Array.from(e.clipboardData.items);
+    const imgItem = items.find((i) => i.type.startsWith("image/"));
+    if (imgItem) {
+      e.preventDefault();
+      const blob = imgItem.getAsFile();
+      if (blob) void handleImageFile(blob);
+    }
+  }, [handleImageFile]);
+
+  // Drop handler on the whole chat area
+  const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const file = Array.from(e.dataTransfer.files).find((f) => f.type.startsWith("image/"));
+    if (file) void handleImageFile(file);
+  }, [handleImageFile]);
+
   // ── Send message ────────────────────────────────────────────────────────────
 
   const sendMessage = useCallback(async () => {
     const text = input.trim();
-    if (!text || streaming) return;
+    if (!text && !pendingImage || streaming) return;
 
-    // Create a new conversation if none active
     let convId = activeId;
     if (!convId) {
       try {
@@ -279,6 +348,8 @@ export default function Informed() {
     }
 
     setInput("");
+    const sentImage = pendingImage;
+    setPendingImage(null);
     setStreaming(true);
     setStreamingContent("");
     setStreamError(null);
@@ -287,6 +358,12 @@ export default function Informed() {
     abortRef.current = abort;
 
     try {
+      const body: Record<string, unknown> = { message: text, conversationId: convId, context };
+      if (sentImage) {
+        body.imageData = sentImage.data;
+        body.imageMediaType = sentImage.mediaType;
+      }
+
       const res = await fetch("/api/informed/chat", {
         method: "POST",
         headers: {
@@ -294,7 +371,7 @@ export default function Informed() {
           "Authorization": `Bearer ${deviceId}`,
         },
         credentials: "include",
-        body: JSON.stringify({ message: text, conversationId: convId, context }),
+        body: JSON.stringify(body),
         signal: abort.signal,
       });
 
@@ -335,7 +412,7 @@ export default function Informed() {
       abortRef.current = null;
       textareaRef.current?.focus();
     }
-  }, [input, streaming, activeId, context, qc]);
+  }, [input, pendingImage, streaming, activeId, context, qc]);
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -346,11 +423,29 @@ export default function Informed() {
 
   const groups = groupByDate(messages);
   const activeConv = conversations.find((c) => c.id === activeId);
+  const canSend = (!!input.trim() || !!pendingImage) && !streaming;
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex gap-0" style={{ height: "calc(100vh - 180px)", minHeight: "500px" }}>
+    <div
+      className="flex gap-0"
+      style={{ height: "calc(100vh - 180px)", minHeight: "500px" }}
+      onDrop={handleDrop}
+      onDragOver={(e) => e.preventDefault()}
+    >
+      {/* hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) void handleImageFile(file);
+          e.target.value = "";
+        }}
+      />
 
       {/* ── Sidebar ── */}
       <div className={`flex flex-col shrink-0 border-r border-border transition-all duration-200 ${sidebarOpen ? "w-56" : "w-0 overflow-hidden"}`}>
@@ -375,9 +470,7 @@ export default function Informed() {
             <div className="flex justify-center py-4"><Spinner className="h-4 w-4" /></div>
           )}
           {!convsLoading && conversations.length === 0 && (
-            <div className="text-xs text-muted-foreground text-center py-4 px-2">
-              No chats yet. Start a new one.
-            </div>
+            <div className="text-xs text-muted-foreground text-center py-4 px-2">No chats yet.</div>
           )}
           {conversations.map((conv) => (
             <div
@@ -387,7 +480,7 @@ export default function Informed() {
                   ? "bg-violet-100 dark:bg-violet-900/30 text-foreground"
                   : "hover:bg-muted text-muted-foreground hover:text-foreground"
               }`}
-              onClick={() => { setActiveId(conv.id); setStreamError(null); }}
+              onClick={() => { setActiveId(conv.id); setStreamError(null); setPendingImage(null); }}
             >
               <MessageSquare className="h-3.5 w-3.5 shrink-0 opacity-60" />
               <div className="flex-1 min-w-0">
@@ -438,7 +531,6 @@ export default function Informed() {
               onClick={() => createConversation.mutate()}
               disabled={createConversation.isPending}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-              title="New chat"
             >
               <Plus className="h-3.5 w-3.5" />
               New chat
@@ -467,14 +559,15 @@ export default function Informed() {
               <li>• Your psychological profile (if generated)</li>
               <li>• All your projects — names, descriptions, recent conversations, and documents</li>
               <li>• All documents you've uploaded to the app</li>
+              <li>• Images you send (Claude can read text in images via OCR)</li>
             </ul>
-            <div className="mt-1.5 text-[10px] text-muted-foreground">Context is refreshed with every message.</div>
+            <div className="mt-1.5 text-[10px] text-muted-foreground">Paste an image, drag-and-drop, or click the image button to attach a photo.</div>
           </div>
         )}
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto py-4 space-y-1 min-h-0">
-          {(msgsLoading) && (
+          {msgsLoading && (
             <div className="flex justify-center py-8"><Spinner className="h-5 w-5" /></div>
           )}
 
@@ -515,7 +608,7 @@ export default function Informed() {
                       }`}>
                         {m.role === "user" && (
                           <div className="absolute -top-2 -left-8 flex">
-                            <CopyButton text={m.content} light />
+                            <CopyButton text={m.content === "[image]" ? "" : m.content} light />
                           </div>
                         )}
                         {m.role === "assistant" && (
@@ -523,9 +616,22 @@ export default function Informed() {
                             <CopyButton text={m.content} />
                           </div>
                         )}
+                        {/* Image attachment */}
+                        {m.imageData && m.imageMediaType && (
+                          <div className="mb-2">
+                            <img
+                              src={`data:${m.imageMediaType};base64,${m.imageData}`}
+                              alt="attached"
+                              className="rounded-lg max-h-64 max-w-full object-contain"
+                            />
+                          </div>
+                        )}
+                        {/* Text */}
                         {m.role === "assistant"
                           ? <MessageContent content={m.content} />
-                          : <p className="text-sm leading-relaxed whitespace-pre-wrap">{m.content}</p>
+                          : m.content !== "[image]"
+                            ? <p className="text-sm leading-relaxed whitespace-pre-wrap">{m.content}</p>
+                            : null
                         }
                       </div>
                       <div className={`text-[10px] text-muted-foreground mt-1 ${m.role === "user" ? "text-right" : "text-left"}`}>
@@ -572,29 +678,58 @@ export default function Informed() {
           <div ref={bottomRef} />
         </div>
 
-        {/* Input */}
+        {/* Input area */}
         <div className="shrink-0 pt-3 border-t border-border">
-          <div className="flex gap-2">
+          {/* Image preview */}
+          {pendingImage && (
+            <div className="mb-2 flex items-start gap-2">
+              <div className="relative inline-block">
+                <img
+                  src={pendingImage.preview}
+                  alt="pending"
+                  className="rounded-xl max-h-32 max-w-xs object-contain border border-border"
+                />
+                <button
+                  type="button"
+                  onClick={() => setPendingImage(null)}
+                  className="absolute -top-2 -right-2 bg-background border border-border rounded-full p-0.5 text-muted-foreground hover:text-foreground shadow-sm"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <span className="text-xs text-muted-foreground mt-1">Image ready to send</span>
+            </div>
+          )}
+          <div className="flex gap-2 items-end">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              title="Attach image"
+              className="shrink-0 p-2.5 rounded-xl border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            >
+              <Paperclip className="h-4 w-4" />
+            </button>
             <textarea
               ref={textareaRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={activeId ? "Message Claude… (Enter to send)" : "Start a new message… (Enter to send)"}
+              onPaste={handlePaste}
+              placeholder={pendingImage ? "Add a message (optional)… or press Enter to send" : "Message Claude… (Enter to send, Shift+Enter for newline)"}
               rows={2}
               className="flex-1 resize-none rounded-xl border border-border bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50 placeholder:text-muted-foreground"
             />
             <Button
               type="button"
               onClick={() => void sendMessage()}
-              disabled={!input.trim() || streaming}
-              className="px-4 rounded-xl bg-violet-600 hover:bg-violet-700 text-white h-full"
+              disabled={!canSend}
+              className="px-4 rounded-xl bg-violet-600 hover:bg-violet-700 text-white shrink-0 h-[52px]"
             >
               {streaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </Button>
           </div>
           <div className="text-xs text-muted-foreground mt-1.5 text-center">
-            Powered by Claude · Context refreshed every message
+            Paste or drag images · Claude reads text in images (OCR) · Powered by Claude
           </div>
         </div>
       </div>
@@ -635,8 +770,8 @@ function EmptyState({ onStarterClick, onNewChat }: { onStarterClick: (p: string)
       <div className="max-w-sm">
         <div className="font-semibold text-foreground text-lg mb-2">Ask me anything</div>
         <div className="text-sm leading-relaxed">
-          I know your goals, projects, and follow-through history. Ask for advice, a plan for today,
-          feedback on a project, or just chat.
+          I know your goals, projects, and follow-through history. Send text, paste a screenshot,
+          or drag-and-drop an image — I can read the text in it too.
         </div>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-left max-w-md w-full mt-1">
@@ -655,6 +790,10 @@ function EmptyState({ onStarterClick, onNewChat }: { onStarterClick: (p: string)
             {prompt}
           </button>
         ))}
+      </div>
+      <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+        <ImageIcon className="h-3.5 w-3.5" />
+        <span>Paste a screenshot or drag an image anywhere to attach it</span>
       </div>
     </div>
   );
