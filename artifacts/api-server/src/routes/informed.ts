@@ -13,6 +13,7 @@ import {
 } from "@workspace/db";
 import type { MessageParam, ImageBlockParam, TextBlockParam } from "@anthropic-ai/sdk/resources/messages";
 import { azureOcr } from "../lib/azureOcr";
+import pdfParse from "pdf-parse";
 
 const router: IRouter = Router();
 const MODEL = "claude-sonnet-4-6";
@@ -161,17 +162,22 @@ router.get("/informed/conversations/:id/messages", async (req, res): Promise<voi
 
 router.post("/informed/chat", async (req, res): Promise<void> => {
   const userId = req.userId!;
-  const { message, conversationId, context, imageData, imageMediaType } = req.body as {
+  const { message, conversationId, context, imageData, imageMediaType, documentData, documentMediaType, documentName, documentText } = req.body as {
     message?: string;
     conversationId?: string;
     context?: FrontendContext;
     imageData?: string;
     imageMediaType?: string;
+    documentData?: string;   // base64-encoded PDF
+    documentMediaType?: string;
+    documentName?: string;
+    documentText?: string;   // pre-read text (for TXT files)
   };
 
   const hasImage = !!(imageData && imageMediaType);
-  if (!message?.trim() && !hasImage) {
-    res.status(400).json({ error: "Message or image is required" });
+  const hasDocument = !!(documentData || documentText);
+  if (!message?.trim() && !hasImage && !hasDocument) {
+    res.status(400).json({ error: "Message, image, or document is required" });
     return;
   }
   if (!conversationId) {
@@ -210,7 +216,7 @@ router.post("/informed/chat", async (req, res): Promise<void> => {
       }),
     );
 
-    // Run Azure OCR on image (if present) — fast, high-quality text extraction
+    // Run Azure OCR on image (if present)
     let ocrText = "";
     if (hasImage && imageData && imageMediaType) {
       try {
@@ -220,21 +226,34 @@ router.post("/informed/chat", async (req, res): Promise<void> => {
       }
     }
 
-    // Save user message (store image alongside text)
+    // Extract text from uploaded document (PDF or TXT)
+    let extractedDocText = documentText ?? "";
+    if (!extractedDocText && documentData && documentMediaType === "application/pdf") {
+      try {
+        const buf = Buffer.from(documentData, "base64");
+        const parsed = await pdfParse(buf);
+        extractedDocText = parsed.text ?? "";
+      } catch (err) {
+        req.log.warn({ err }, "PDF parse failed, continuing without document text");
+      }
+    }
+
+    // Save user message
     const isFirstMessage = history.length === 0;
     const userText = message?.trim() ?? "";
+    const contentLabel = userText || (hasDocument ? `[${documentName ?? "document"}]` : "[image]");
     await db.insert(informedMessagesTable).values({
       id: randomUUID(),
       userId,
       conversationId,
       role: "user",
-      content: userText || "[image]",
+      content: contentLabel,
       imageData: hasImage ? imageData : null,
       imageMediaType: hasImage ? imageMediaType : null,
     });
 
     // Auto-title from first message
-    const titleSource = userText || (hasImage ? "Image" : "New chat");
+    const titleSource = userText || (hasDocument ? (documentName ?? "Document") : hasImage ? "Image" : "New chat");
     if (isFirstMessage) {
       await db.update(informedConversationsTable)
         .set({ title: titleFromMessage(titleSource), updatedAt: new Date() })
@@ -302,10 +321,11 @@ How to use this knowledge:
       return { role: m.role as "user" | "assistant", content: m.content };
     });
 
-    // Append current message — combine user text + OCR extract so Claude has both
+    // Append current message — combine user text + OCR text + document text
     const fullUserText = [
       userText,
       ocrText ? `[Text extracted from image via OCR:\n${ocrText}]` : "",
+      extractedDocText ? `[Contents of attached document "${documentName ?? "document"}":\n${cap(extractedDocText, 40_000)}]` : "",
     ].filter(Boolean).join("\n\n");
     convo.push(buildUserMessage(fullUserText, imageData, imageMediaType));
 

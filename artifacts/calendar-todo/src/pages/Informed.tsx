@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Send, Trash2, Bot, User, Loader2, Info, X, Copy, Check,
   Plus, MessageSquare, ChevronLeft, ChevronRight, ImageIcon, Paperclip,
+  FileText,
 } from "lucide-react";
 import { useStore, deviceId } from "@/lib/storage";
 import { buildAssistantContext } from "@/lib/assistantContext";
@@ -45,6 +46,14 @@ interface PendingImage {
   data: string;       // base64 without prefix
   mediaType: string;  // e.g. "image/jpeg"
   preview: string;    // data URL for display
+}
+
+interface PendingDocument {
+  name: string;
+  mediaType: string;            // "application/pdf" or "text/plain"
+  text?: string;                // pre-read text (TXT files)
+  data?: string;                // base64 (PDF files)
+  sizeLabel: string;
 }
 
 // ── Auth-aware fetch ──────────────────────────────────────────────────────────
@@ -229,6 +238,7 @@ export default function Informed() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [input, setInput] = useState("");
   const [pendingImage, setPendingImage] = useState<PendingImage | null>(null);
+  const [pendingDocument, setPendingDocument] = useState<PendingDocument | null>(null);
   const [streaming, setStreaming] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
   const [streamError, setStreamError] = useState<string | null>(null);
@@ -260,6 +270,7 @@ export default function Informed() {
       setActiveId(conv.id);
       setInput("");
       setPendingImage(null);
+      setPendingDocument(null);
       setStreamError(null);
       setStreamingContent("");
       textareaRef.current?.focus();
@@ -297,10 +308,38 @@ export default function Informed() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, streamingContent]);
 
-  // ── Image pick/paste ────────────────────────────────────────────────────────
+  // ── File handling (images + documents) ──────────────────────────────────────
+
+  const formatSize = (bytes: number) => bytes < 1024 * 1024
+    ? `${(bytes / 1024).toFixed(0)} KB`
+    : `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+
+  const handleDocumentFile = useCallback(async (file: File) => {
+    const isText = file.type === "text/plain" || file.name.endsWith(".txt");
+    const isPdf = file.type === "application/pdf" || file.name.endsWith(".pdf");
+    if (!isText && !isPdf) return;
+
+    setPendingImage(null); // clear any pending image
+    const sizeLabel = formatSize(file.size);
+
+    if (isText) {
+      const text = await file.text();
+      setPendingDocument({ name: file.name, mediaType: "text/plain", text, sizeLabel });
+    } else {
+      // PDF — read as base64, server will parse
+      const buf = await file.arrayBuffer();
+      const bytes = new Uint8Array(buf);
+      let binary = "";
+      for (const b of bytes) binary += String.fromCharCode(b);
+      const data = btoa(binary);
+      setPendingDocument({ name: file.name, mediaType: "application/pdf", data, sizeLabel });
+    }
+    textareaRef.current?.focus();
+  }, []);
 
   const handleImageFile = useCallback(async (file: File | Blob) => {
     if (!file.type.startsWith("image/")) return;
+    setPendingDocument(null); // clear any pending document
     try {
       const img = await compressImage(file);
       setPendingImage(img);
@@ -310,7 +349,12 @@ export default function Informed() {
     }
   }, []);
 
-  // Paste handler — captures images pasted from clipboard
+  const handleAnyFile = useCallback((file: File) => {
+    if (file.type.startsWith("image/")) void handleImageFile(file);
+    else void handleDocumentFile(file);
+  }, [handleImageFile, handleDocumentFile]);
+
+  // Paste handler — captures images from clipboard
   const handlePaste = useCallback((e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const items = Array.from(e.clipboardData.items);
     const imgItem = items.find((i) => i.type.startsWith("image/"));
@@ -321,18 +365,19 @@ export default function Informed() {
     }
   }, [handleImageFile]);
 
-  // Drop handler on the whole chat area
+  // Drop handler — handles images and documents
   const handleDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
-    const file = Array.from(e.dataTransfer.files).find((f) => f.type.startsWith("image/"));
-    if (file) void handleImageFile(file);
-  }, [handleImageFile]);
+    const files = Array.from(e.dataTransfer.files);
+    const file = files[0];
+    if (file) handleAnyFile(file);
+  }, [handleAnyFile]);
 
   // ── Send message ────────────────────────────────────────────────────────────
 
   const sendMessage = useCallback(async () => {
     const text = input.trim();
-    if (!text && !pendingImage || streaming) return;
+    if (!text && !pendingImage && !pendingDocument || streaming) return;
 
     let convId = activeId;
     if (!convId) {
@@ -349,7 +394,9 @@ export default function Informed() {
 
     setInput("");
     const sentImage = pendingImage;
+    const sentDoc = pendingDocument;
     setPendingImage(null);
+    setPendingDocument(null);
     setStreaming(true);
     setStreamingContent("");
     setStreamError(null);
@@ -362,6 +409,12 @@ export default function Informed() {
       if (sentImage) {
         body.imageData = sentImage.data;
         body.imageMediaType = sentImage.mediaType;
+      }
+      if (sentDoc) {
+        body.documentName = sentDoc.name;
+        body.documentMediaType = sentDoc.mediaType;
+        if (sentDoc.text !== undefined) body.documentText = sentDoc.text;
+        if (sentDoc.data !== undefined) body.documentData = sentDoc.data;
       }
 
       const res = await fetch("/api/informed/chat", {
@@ -423,7 +476,7 @@ export default function Informed() {
 
   const groups = groupByDate(messages);
   const activeConv = conversations.find((c) => c.id === activeId);
-  const canSend = (!!input.trim() || !!pendingImage) && !streaming;
+  const canSend = (!!input.trim() || !!pendingImage || !!pendingDocument) && !streaming;
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
@@ -438,11 +491,11 @@ export default function Informed() {
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/*"
+        accept="image/*,.pdf,.txt,application/pdf,text/plain"
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0];
-          if (file) void handleImageFile(file);
+          if (file) handleAnyFile(file);
           e.target.value = "";
         }}
       />
@@ -480,7 +533,7 @@ export default function Informed() {
                   ? "bg-violet-100 dark:bg-violet-900/30 text-foreground"
                   : "hover:bg-muted text-muted-foreground hover:text-foreground"
               }`}
-              onClick={() => { setActiveId(conv.id); setStreamError(null); setPendingImage(null); }}
+              onClick={() => { setActiveId(conv.id); setStreamError(null); setPendingImage(null); setPendingDocument(null); }}
             >
               <MessageSquare className="h-3.5 w-3.5 shrink-0 opacity-60" />
               <div className="flex-1 min-w-0">
@@ -629,9 +682,18 @@ export default function Informed() {
                         {/* Text */}
                         {m.role === "assistant"
                           ? <MessageContent content={m.content} />
-                          : m.content !== "[image]"
-                            ? <p className="text-sm leading-relaxed whitespace-pre-wrap">{m.content}</p>
-                            : null
+                          : (() => {
+                              const isDocLabel = m.content.startsWith("[") && m.content.endsWith("]") && !m.imageData;
+                              const isImageOnly = m.content === "[image]";
+                              if (isImageOnly && m.imageData) return null;
+                              if (isDocLabel) return (
+                                <div className="flex items-center gap-2 text-sm opacity-90">
+                                  <FileText className="h-4 w-4 shrink-0" />
+                                  <span>{m.content.slice(1, -1)}</span>
+                                </div>
+                              );
+                              return <p className="text-sm leading-relaxed whitespace-pre-wrap">{m.content}</p>;
+                            })()
                         }
                       </div>
                       <div className={`text-[10px] text-muted-foreground mt-1 ${m.role === "user" ? "text-right" : "text-left"}`}>
@@ -680,31 +742,51 @@ export default function Informed() {
 
         {/* Input area */}
         <div className="shrink-0 pt-3 border-t border-border">
-          {/* Image preview */}
-          {pendingImage && (
-            <div className="mb-2 flex items-start gap-2">
-              <div className="relative inline-block">
-                <img
-                  src={pendingImage.preview}
-                  alt="pending"
-                  className="rounded-xl max-h-32 max-w-xs object-contain border border-border"
-                />
-                <button
-                  type="button"
-                  onClick={() => setPendingImage(null)}
-                  className="absolute -top-2 -right-2 bg-background border border-border rounded-full p-0.5 text-muted-foreground hover:text-foreground shadow-sm"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              <span className="text-xs text-muted-foreground mt-1">Image ready to send</span>
+          {/* Attachment previews */}
+          {(pendingImage || pendingDocument) && (
+            <div className="mb-2 flex items-start gap-2 flex-wrap">
+              {pendingImage && (
+                <div className="relative inline-block">
+                  <img
+                    src={pendingImage.preview}
+                    alt="pending"
+                    className="rounded-xl max-h-32 max-w-xs object-contain border border-border"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setPendingImage(null)}
+                    className="absolute -top-2 -right-2 bg-background border border-border rounded-full p-0.5 text-muted-foreground hover:text-foreground shadow-sm"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
+              {pendingDocument && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border bg-muted max-w-xs relative">
+                  <FileText className="h-5 w-5 text-violet-500 shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-xs font-medium truncate">{pendingDocument.name}</div>
+                    <div className="text-[10px] text-muted-foreground">{pendingDocument.sizeLabel}</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPendingDocument(null)}
+                    className="ml-1 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
+              <span className="text-xs text-muted-foreground self-center">
+                {pendingDocument ? "Add a message (optional)…" : "Image ready to send"}
+              </span>
             </div>
           )}
           <div className="flex gap-2 items-end">
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              title="Attach image"
+              title="Attach image, PDF, or TXT"
               className="shrink-0 p-2.5 rounded-xl border border-border text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             >
               <Paperclip className="h-4 w-4" />
@@ -715,7 +797,13 @@ export default function Informed() {
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
-              placeholder={pendingImage ? "Add a message (optional)… or press Enter to send" : "Message Claude… (Enter to send, Shift+Enter for newline)"}
+              placeholder={
+                pendingDocument
+                  ? "Ask Claude about this document… (Enter to send)"
+                  : pendingImage
+                  ? "Add a message (optional)… or press Enter to send"
+                  : "Message Claude… (Enter to send, Shift+Enter for newline)"
+              }
               rows={2}
               className="flex-1 resize-none rounded-xl border border-border bg-background px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500/50 placeholder:text-muted-foreground"
             />
@@ -729,7 +817,7 @@ export default function Informed() {
             </Button>
           </div>
           <div className="text-xs text-muted-foreground mt-1.5 text-center">
-            Paste or drag images · Claude reads text in images (OCR) · Powered by Claude
+            Attach images, PDFs, or TXT files · Paste or drag-drop · OCR powered by Azure · Powered by Claude
           </div>
         </div>
       </div>
@@ -792,8 +880,8 @@ function EmptyState({ onStarterClick, onNewChat }: { onStarterClick: (p: string)
         ))}
       </div>
       <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
-        <ImageIcon className="h-3.5 w-3.5" />
-        <span>Paste a screenshot or drag an image anywhere to attach it</span>
+        <Paperclip className="h-3.5 w-3.5" />
+        <span>Attach images (paste/drag), PDFs, or TXT files via the paperclip button</span>
       </div>
     </div>
   );
