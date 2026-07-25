@@ -210,6 +210,16 @@ router.post("/informed/chat", async (req, res): Promise<void> => {
       }),
     );
 
+    // Run Azure OCR on image (if present) — fast, high-quality text extraction
+    let ocrText = "";
+    if (hasImage && imageData && imageMediaType) {
+      try {
+        ocrText = await azureOcr(imageData, imageMediaType);
+      } catch (err) {
+        req.log.warn({ err }, "Azure OCR failed, continuing without OCR text");
+      }
+    }
+
     // Save user message (store image alongside text)
     const isFirstMessage = history.length === 0;
     const userText = message?.trim() ?? "";
@@ -292,8 +302,12 @@ How to use this knowledge:
       return { role: m.role as "user" | "assistant", content: m.content };
     });
 
-    // Append current message (with image if present)
-    convo.push(buildUserMessage(userText, imageData, imageMediaType));
+    // Append current message — combine user text + OCR extract so Claude has both
+    const fullUserText = [
+      userText,
+      ocrText ? `[Text extracted from image via OCR:\n${ocrText}]` : "",
+    ].filter(Boolean).join("\n\n");
+    convo.push(buildUserMessage(fullUserText, imageData, imageMediaType));
 
     let fullResponse = "";
     const stream = anthropic.messages.stream({
