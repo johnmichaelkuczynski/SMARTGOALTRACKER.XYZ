@@ -12,6 +12,7 @@ import {
   projectDocumentsTable,
 } from "@workspace/db";
 import type { MessageParam, ImageBlockParam, TextBlockParam } from "@anthropic-ai/sdk/resources/messages";
+import { azureOcr } from "../lib/azureOcr";
 
 const router: IRouter = Router();
 const MODEL = "claude-sonnet-4-6";
