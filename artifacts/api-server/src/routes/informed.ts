@@ -373,7 +373,7 @@ How to use this knowledge:
 - Never make up facts about their data. If you don't see something in the context, say so.`;
 
     // Build conversation history for Claude — reconstruct images from stored attachments
-    const convo: MessageParam[] = history.slice(-MAX_HISTORY).map((m) => {
+    const convo: MessageParam[] = await Promise.all(history.slice(-MAX_HISTORY).map(async (m) => {
       if (m.role !== "user") return { role: "assistant" as const, content: m.content };
 
       // Parse stored attachments (new format) or fall back to legacy imageData column
@@ -401,7 +401,7 @@ How to use this knowledge:
         return { role: "user" as const, content: blocks };
       }
       return { role: "user" as const, content: textContent || m.content };
-    });
+    }));
 
     // Append current message — all images + OCR + all doc texts
     const fullUserText = [userText, ...ocrParts, ...docParts].filter(Boolean).join("\n\n");
