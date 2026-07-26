@@ -21,6 +21,7 @@ import {
   skeletonToTier0,
   loadAllTiers,
   auditAgainstMemory,
+  updateLiveTier,
 } from "../services/tractatusMemory";
 
 const _require = createRequire(import.meta.url);
