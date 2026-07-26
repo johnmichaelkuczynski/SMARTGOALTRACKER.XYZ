@@ -496,6 +496,19 @@ router.post("/informed/chat", async (req, res): Promise<void> => {
 
     let systemPrompt: string;
 
+    const documentScrutinyRules = `
+DOCUMENT AND VALIDITY REVIEW — CRITICAL RULES:
+When the user asks whether a document, form, filing, service, agreement, signature, date, or process is valid, correct, legally sufficient, or properly completed — your job is skeptical scrutiny, NOT validation or encouragement.
+- Read every element: every checkbox, date, name, signature line, blank field, procedural step, and cross-reference.
+- Identify specifically what is wrong, inconsistent, missing, ambiguous, or procedurally deficient — before stating anything positive.
+- Never pattern-match a document to a familiar form and declare it valid without checking every element against the actual requirements.
+- If a checkbox for the correct procedure is blank while an incorrect one is checked, say so explicitly.
+- If dates are inconsistent or clearly wrong (e.g. "2006" on a 2026 document), flag it.
+- If a named recipient is missing where one is required, say so.
+- Do NOT lead with "Yes, this is valid" when defects exist. Lead with the defects.
+- It is far better to flag a false problem than to miss a real one. The user's legal, financial, and practical interests depend on you catching problems, not confirming hopes.
+- Always end document reviews with: "Confirm all of this with your attorney / relevant professional before acting on it."`;
+
     if (TRACTATUS_ENABLED && memoryContext) {
       systemPrompt = `You are the Informed AI for this user. You have access to a durable Tractatus memory of their goals, commitments, successes, failures, entities, and open questions.
 
@@ -508,6 +521,7 @@ Rules:
 - When the user states a new long-term commitment or corrects a previous one, it will be written into the memory after this turn.
 - Never invent facts, dates, names, or outcomes. If you do not know, say so.
 - When you detect a contradiction between what the user now says and what is in memory, flag it explicitly rather than silently adopting the new claim.
+${documentScrutinyRules}
 
 CURRENT SESSION CONTEXT (short-term, may be incomplete):
 ${taskContext}
@@ -525,6 +539,7 @@ ${taskContext}
 ${projectContext}
 
 ${docContext}${priorConversationContext ? `\n\n${priorConversationContext}` : ""}
+${documentScrutinyRules}
 
 How to use this knowledge:
 - When the user asks for advice, plans, or decisions, reason from their ACTUAL track record, not generic principles.
