@@ -250,6 +250,14 @@ export default function Informed() {
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [showInfo, setShowInfo] = useState(false);
   const [isDictating, setIsDictating] = useState(false);
+
+  // ── Response preferences ─────────────────────────────────────────────────────
+  type RespLength = "natural" | "extremely_concise" | "concise" | "normal" | "thorough" | "extremely_thorough";
+  type RespFormat = "natural" | "sentences" | "bullets" | "numbered";
+  type RespTone   = "strongly_critical" | "critical" | "neutral" | "mildly_positive" | "positive";
+  const [respLength, setRespLength] = useState<RespLength>("natural");
+  const [respFormat, setRespFormat] = useState<RespFormat>("natural");
+  const [respTone,   setRespTone]   = useState<RespTone>("neutral");
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -463,7 +471,10 @@ export default function Informed() {
         .filter((a) => a.type === "document")
         .map((a) => ({ name: a.name, mediaType: a.mediaType!, text: a.text, data: a.data }));
 
-      const body: Record<string, unknown> = { message: text, conversationId: convId, context };
+      const body: Record<string, unknown> = {
+        message: text, conversationId: convId, context,
+        preferences: { length: respLength, format: respFormat, tone: respTone },
+      };
       if (images.length) body.images = images;
       if (documents.length) body.documents = documents;
 
@@ -996,6 +1007,46 @@ export default function Informed() {
               )}
             </div>
           )}
+          {/* ── Response preferences bar ── */}
+          <div className="flex items-center gap-2 flex-wrap pb-1.5 border-b border-border/50 mb-1.5">
+            <span className="text-[10px] uppercase tracking-widest text-muted-foreground shrink-0">Response:</span>
+            <select
+              value={respLength}
+              onChange={(e) => setRespLength(e.target.value as RespLength)}
+              title="Response length"
+              className="text-xs rounded-lg border border-border bg-background px-2 py-1 text-muted-foreground focus:outline-none focus:ring-1 focus:ring-violet-500/50 cursor-pointer"
+            >
+              <option value="natural">Natural length</option>
+              <option value="extremely_concise">Extremely concise</option>
+              <option value="concise">Concise</option>
+              <option value="normal">Normal</option>
+              <option value="thorough">Thorough</option>
+              <option value="extremely_thorough">Extremely thorough</option>
+            </select>
+            <select
+              value={respFormat}
+              onChange={(e) => setRespFormat(e.target.value as RespFormat)}
+              title="Response format"
+              className="text-xs rounded-lg border border-border bg-background px-2 py-1 text-muted-foreground focus:outline-none focus:ring-1 focus:ring-violet-500/50 cursor-pointer"
+            >
+              <option value="natural">Natural format</option>
+              <option value="sentences">Full sentences</option>
+              <option value="bullets">Bullet points</option>
+              <option value="numbered">Numbered list</option>
+            </select>
+            <select
+              value={respTone}
+              onChange={(e) => setRespTone(e.target.value as RespTone)}
+              title="Response tone"
+              className="text-xs rounded-lg border border-border bg-background px-2 py-1 text-muted-foreground focus:outline-none focus:ring-1 focus:ring-violet-500/50 cursor-pointer"
+            >
+              <option value="strongly_critical">Strongly critical</option>
+              <option value="critical">Critical</option>
+              <option value="neutral">Neutral</option>
+              <option value="mildly_positive">Mildly positive</option>
+              <option value="positive">Positive</option>
+            </select>
+          </div>
           <div className="flex gap-2 items-end">
             <button
               type="button"

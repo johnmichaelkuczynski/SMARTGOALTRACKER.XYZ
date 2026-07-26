@@ -252,12 +252,13 @@ router.post("/informed/audit", async (req, res): Promise<void> => {
 
 router.post("/informed/chat", async (req, res): Promise<void> => {
   const userId = req.userId!;
-  const { message, conversationId, context, images, documents } = req.body as {
+  const { message, conversationId, context, images, documents, preferences } = req.body as {
     message?: string;
     conversationId?: string;
     context?: FrontendContext;
     images?: Array<{ data: string; mediaType: string; name?: string }>;
     documents?: Array<{ name: string; mediaType: string; text?: string; data?: string }>;
+    preferences?: { length?: string; format?: string; tone?: string };
   };
 
   const hasImages = !!(images?.length);
@@ -496,6 +497,46 @@ router.post("/informed/chat", async (req, res): Promise<void> => {
 
     let systemPrompt: string;
 
+    // ── Build preferences instruction ──────────────────────────────────────────
+    const lengthInstructions: Record<string, string> = {
+      naturally: "",
+      extremely_concise: "LENGTH: Respond in as few words as possible. One to two sentences maximum unless the question absolutely requires more. No preamble, no filler.",
+      concise: "LENGTH: Be concise. Cut all preamble and filler. Get directly to the point.",
+      normal: "LENGTH: Use a moderate length — enough to be clear and complete, but no padding.",
+      thorough: "LENGTH: Be thorough. Cover all relevant angles, caveats, and supporting detail.",
+      extremely_thorough: "LENGTH: Be exhaustive. Cover every relevant angle with maximum detail, examples, edge cases, and caveats.",
+    };
+    const formatInstructions: Record<string, string> = {
+      natural: "",
+      sentences: "FORMAT: Respond in complete sentences only. Do not use bullet points, numbered lists, or headers under any circumstances.",
+      bullets: "FORMAT: Structure your entire response using bullet points. Every main point must be a bullet. No paragraphs.",
+      numbered: "FORMAT: Structure your entire response as a numbered list. Every main point must be numbered. No paragraphs.",
+    };
+    const toneInstructions: Record<string, string> = {
+      strongly_critical: "TONE: Be maximally skeptical and critical. Actively seek flaws, weaknesses, gaps, contradictions, and counterarguments. Lead with what is wrong or questionable. Do not soften criticism. Do not balance criticism with praise unless the praise is factually necessary.",
+      critical: "TONE: Lean skeptical. Flag problems, weaknesses, and risks alongside any merits. Do not soften criticism or lead with encouragement.",
+      neutral: "",
+      mildly_positive: "TONE: Be somewhat encouraging while remaining accurate. Acknowledge strengths alongside problems, and frame constructively.",
+      positive: "TONE: Be supportive and encouraging. Emphasize strengths and possibilities while remaining factually accurate.",
+    };
+
+    const prefParts: string[] = [];
+    if (preferences?.length && preferences.length !== "natural") {
+      const instr = lengthInstructions[preferences.length];
+      if (instr) prefParts.push(instr);
+    }
+    if (preferences?.format && preferences.format !== "natural") {
+      const instr = formatInstructions[preferences.format];
+      if (instr) prefParts.push(instr);
+    }
+    if (preferences?.tone && preferences.tone !== "neutral") {
+      const instr = toneInstructions[preferences.tone];
+      if (instr) prefParts.push(instr);
+    }
+    const preferencesBlock = prefParts.length > 0
+      ? `\nUSER RESPONSE PREFERENCES (apply to every reply):\n${prefParts.join("\n")}\n`
+      : "";
+
     const documentScrutinyRules = `
 DOCUMENT AND VALIDITY REVIEW — CRITICAL RULES:
 When the user asks whether a document, form, filing, service, agreement, signature, date, or process is valid, correct, legally sufficient, or properly completed — your job is skeptical scrutiny, NOT validation or encouragement.
@@ -510,44 +551,47 @@ When the user asks whether a document, form, filing, service, agreement, signatu
 - Always end document reviews with: "Confirm all of this with your attorney / relevant professional before acting on it."`;
 
     if (TRACTATUS_ENABLED && memoryContext) {
-      systemPrompt = `You are the Informed AI for this user. You have access to a durable Tractatus memory of their goals, commitments, successes, failures, entities, and open questions.
+      systemPrompt = `You are the Informed AI for this user. You have access to their goals, projects, documents, and a durable memory of their commitments and track record.
 
-TRACTATUS MEMORY (authoritative — takes priority over any conflicting temporary context):
+CORE BEHAVIOR:
+- Answer questions narrowly and accurately. Do not pad, editorialize, or add unsolicited encouragement.
+- Default tone is neutral and factual — not ingratiating, not harsh. State what is true.
+- Never invent facts, dates, names, or outcomes. If you do not know something, say so plainly.
+- When the user sends a document or image, read every detail carefully before responding.
+${preferencesBlock}
+TRACTATUS MEMORY (authoritative — takes priority over any conflicting context):
 ${memoryContext}
 
-Rules:
+Memory rules:
 - Never contradict a REJECTS or ASSERTS entry without explicit CONFLICT_FLAG acknowledgment.
-- Prefer the memory over any temporary context that conflicts with it.
-- When the user states a new long-term commitment or corrects a previous one, it will be written into the memory after this turn.
-- Never invent facts, dates, names, or outcomes. If you do not know, say so.
-- When you detect a contradiction between what the user now says and what is in memory, flag it explicitly rather than silently adopting the new claim.
+- When the user states a new long-term commitment or corrects a previous one, it will be recorded after this turn.
+- When you detect a contradiction between what the user now says and what is in memory, flag it explicitly.
 ${documentScrutinyRules}
 
-CURRENT SESSION CONTEXT (short-term, may be incomplete):
+CURRENT SESSION CONTEXT:
 ${taskContext}
 
 ${projectContext}
 
 ${docContext}${priorConversationContext ? `\n\n${priorConversationContext}` : ""}`;
     } else {
-      systemPrompt = `You are an AI assistant with complete knowledge of this specific user's life, goals, and projects inside their Goal Tracker app. You are not a generic assistant — you know this person.
+      systemPrompt = `You are an AI assistant with knowledge of this specific user's goals, projects, and track record. You are not a generic assistant — you have their data.
 
-Here is everything you know about the user right now:
+CORE BEHAVIOR:
+- Answer questions narrowly and accurately. Do not pad, editorialize, or add unsolicited encouragement.
+- Default tone is neutral and factual — not ingratiating, not harsh. State what is true.
+- Reason from the user's ACTUAL data (goals, follow-through rates, journal) — not generic principles.
+- When they ask about their projects or goals, you already have the context — don't ask them to re-explain.
+- When the user sends a document or image, read every detail carefully before responding.
+- Never make up facts about their data. If you don't see something in the context, say so plainly.
+${preferencesBlock}${documentScrutinyRules}
 
+USER CONTEXT:
 ${taskContext}
 
 ${projectContext}
 
-${docContext}${priorConversationContext ? `\n\n${priorConversationContext}` : ""}
-${documentScrutinyRules}
-
-How to use this knowledge:
-- When the user asks for advice, plans, or decisions, reason from their ACTUAL track record, not generic principles.
-- When they ask about their projects, you already know the context — don't ask them to re-explain.
-- When they ask "what should I work on today?", look at their goals, follow-through patterns, and projects and give a specific, reasoned answer.
-- When the user sends an image, read it carefully and describe or extract all relevant information from it (OCR, analysis, etc.).
-- Be direct, honest, and specific. A sharp advisor who actually knows their situation, not a generic chatbot.
-- Never make up facts about their data. If you don't see something in the context, say so.`;
+${docContext}${priorConversationContext ? `\n\n${priorConversationContext}` : ""}`;
     }
 
     // Build conversation history for Claude
