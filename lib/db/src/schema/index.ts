@@ -7,4 +7,6 @@ export * from "./projectMessages";
 export * from "./projectDocuments";
 export * from "./informedMessages";
 export * from "./informedConversations";
+export * from "./legalMessages";
+export * from "./legalConversations";
 export * from "./tractatus";

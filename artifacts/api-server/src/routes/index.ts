@@ -10,6 +10,7 @@ import voiceRouter from "./voice";
 import ocrRouter from "./ocr";
 import projectsRouter from "./projects";
 import informedRouter from "./informed";
+import legalRouter from "./legal";
 import { requireAuth } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
@@ -29,5 +30,6 @@ router.use(voiceRouter);
 router.use(ocrRouter);
 router.use(projectsRouter);
 router.use(informedRouter);
+router.use(legalRouter);
 
 export default router;

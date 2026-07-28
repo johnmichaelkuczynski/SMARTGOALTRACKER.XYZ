@@ -26,6 +26,7 @@ import AdminPage from "@/pages/AdminPage";
 import ProjectsList from "@/pages/ProjectsList";
 import ProjectDetail from "@/pages/ProjectDetail";
 import Informed from "@/pages/Informed";
+import Legal from "@/pages/Legal";
 import { SignInPage } from "@/pages/AuthPages";
 import { AppLayout } from "@/components/AppLayout";
 import { useSyncStatus, deviceId, syncDevice, syncUser } from "@/lib/storage";
@@ -98,6 +99,7 @@ function AppRoutes() {
         <Route path="/projects" component={ProjectsList} />
         <Route path="/projects/:id" component={ProjectDetail} />
         <Route path="/informed" component={Informed} />
+        <Route path="/legal" component={Legal} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>
