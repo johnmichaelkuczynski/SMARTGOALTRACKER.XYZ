@@ -189,6 +189,24 @@ export class ObjectStorageService {
     return normalizedPath;
   }
 
+  /** Upload a buffer directly from the server into the private object directory.
+   *  Returns the normalized `/objects/<uuid>` path. */
+  async uploadBuffer(
+    buf: Buffer,
+    contentType: string,
+  ): Promise<string> {
+    const privateObjectDir = this.getPrivateObjectDir();
+    const objectId = randomUUID();
+    const fullPath = `${privateObjectDir}/legal-docs/${objectId}`;
+    const { bucketName, objectName } = parseObjectPath(fullPath);
+    const bucket = objectStorageClient.bucket(bucketName);
+    const file = bucket.file(objectName);
+    await file.save(buf, { contentType, resumable: false });
+    return this.normalizeObjectEntityPath(
+      `https://storage.googleapis.com/${bucketName}/${objectName}`
+    );
+  }
+
   async canAccessObjectEntity({
     userId,
     objectFile,

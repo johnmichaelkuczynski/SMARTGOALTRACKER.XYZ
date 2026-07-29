@@ -9,4 +9,5 @@ export * from "./informedMessages";
 export * from "./informedConversations";
 export * from "./legalMessages";
 export * from "./legalConversations";
+export * from "./legalDocuments";
 export * from "./tractatus";

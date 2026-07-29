@@ -6,11 +6,14 @@ import {
   db,
   legalMessagesTable,
   legalConversationsTable,
+  legalDocumentsTable,
   documentsTable,
   projectsTable,
   projectMessagesTable,
   projectDocumentsTable,
 } from "@workspace/db";
+import { ObjectStorageService } from "../lib/objectStorage";
+import { nanoid } from "nanoid";
 import type { MessageParam, ImageBlockParam, TextBlockParam, DocumentBlockParam } from "@anthropic-ai/sdk/resources/messages";
 import { createRequire } from "module";
 import { azureOcr } from "../lib/azureOcr";
@@ -50,6 +53,7 @@ async function normalizeImage(img: { data: string; mediaType: string }): Promise
 }
 
 const router: IRouter = Router();
+const objectStorage = new ObjectStorageService();
 const MODEL = "claude-sonnet-4-6";
 const MAX_HISTORY = 40;
 const MAX_DOC_CHARS = 8000;
@@ -70,6 +74,30 @@ function titleFromMessage(msg: string): string {
   const clean = msg.replace(/\s+/g, " ").trim();
   return clean.length > 60 ? clean.slice(0, 57) + "…" : clean || "Image";
 }
+
+// ── Documents library ─────────────────────────────────────────────────────────
+
+router.get("/legal/documents", async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  try {
+    const rows = await db.select({
+      id: legalDocumentsTable.id,
+      conversationId: legalDocumentsTable.conversationId,
+      name: legalDocumentsTable.name,
+      contentType: legalDocumentsTable.contentType,
+      size: legalDocumentsTable.size,
+      charCount: legalDocumentsTable.charCount,
+      createdAt: legalDocumentsTable.createdAt,
+    })
+      .from(legalDocumentsTable)
+      .where(eq(legalDocumentsTable.userId, userId))
+      .orderBy(desc(legalDocumentsTable.createdAt));
+    res.json({ documents: rows });
+  } catch (err) {
+    req.log.error({ err }, "Failed to list legal documents");
+    res.status(500).json({ error: "Failed to load documents" });
+  }
+});
 
 // ── Conversations ─────────────────────────────────────────────────────────────
 
@@ -299,13 +327,17 @@ router.post("/legal/chat", async (req, res): Promise<void> => {
       }));
     }
 
-    // Build document content blocks
+    // Build document content blocks + persist each document to object storage
     const docBlocks: DocumentBlockParam[] = [];
+    const userMsgId = randomUUID();
+
     if (hasDocs && documents) {
-      for (const doc of documents) {
+      await Promise.all(documents.map(async (doc) => {
         const isPdf  = doc.mediaType === "application/pdf" || doc.name.toLowerCase().endsWith(".pdf");
         const isDocx = !!(doc.mediaType?.includes("wordprocessingml") || doc.mediaType?.includes("msword") || doc.name.match(/\.docx?$/i));
         const isText = doc.mediaType === "text/plain" || doc.name.toLowerCase().endsWith(".txt");
+
+        let extractedText = "";
 
         if (isPdf && doc.data) {
           docBlocks.push({
@@ -316,23 +348,52 @@ router.post("/legal/chat", async (req, res): Promise<void> => {
           try {
             const buf = Buffer.from(doc.data, "base64");
             const result = await mammoth.extractRawText({ buffer: buf });
-            const extracted = result.value?.trim() ?? "";
-            if (extracted) {
+            extractedText = result.value?.trim() ?? "";
+            if (extractedText) {
               docBlocks.push({
                 type: "document",
-                source: { type: "text", media_type: "text/plain", data: cap(extracted, 80_000) },
+                source: { type: "text", media_type: "text/plain", data: cap(extractedText, 80_000) },
               } as DocumentBlockParam);
             }
           } catch (err) {
             req.log.warn({ err, name: doc.name }, "DOCX parse failed");
           }
         } else if (isText && doc.text?.trim()) {
+          extractedText = doc.text.trim();
           docBlocks.push({
             type: "document",
-            source: { type: "text", media_type: "text/plain", data: cap(doc.text.trim(), 80_000) },
+            source: { type: "text", media_type: "text/plain", data: cap(extractedText, 80_000) },
           } as DocumentBlockParam);
         }
-      }
+
+        // Persist to object storage + legal_documents table
+        try {
+          const rawBuf: Buffer | null = doc.data
+            ? Buffer.from(doc.data, "base64")
+            : doc.text
+            ? Buffer.from(doc.text, "utf8")
+            : null;
+
+          if (rawBuf) {
+            const objectPath = await objectStorage.uploadBuffer(rawBuf, doc.mediaType);
+            const finalExtracted = extractedText || (isText && doc.text ? doc.text.trim() : "");
+            await db.insert(legalDocumentsTable).values({
+              id: nanoid(),
+              userId,
+              conversationId,
+              messageId: userMsgId,
+              name: doc.name,
+              contentType: doc.mediaType,
+              objectPath,
+              extractedText: finalExtracted.slice(0, 200_000),
+              size: rawBuf.length,
+              charCount: finalExtracted.length,
+            });
+          }
+        } catch (storageErr) {
+          req.log.warn({ storageErr, name: doc.name }, "Legal: failed to persist document to storage");
+        }
+      }));
     }
 
     // Build attachments JSON for storage
@@ -341,14 +402,14 @@ router.post("/legal/chat", async (req, res): Promise<void> => {
       ...(documents?.map((doc) => ({ type: "document", name: doc.name, mediaType: doc.mediaType })) ?? []),
     ];
 
-    // Save user message
+    // Save user message (using pre-generated ID so documents can reference it)
     const isFirstMessage = history.length === 0;
     const userText = message?.trim() ?? "";
     const contentLabel = userText
       || (hasDocs && documents!.length === 1 ? `[${documents![0].name}]` : hasDocs ? `[${documents!.length} documents]` : "")
       || (hasImages && images!.length === 1 ? "[image]" : hasImages ? `[${images!.length} images]` : "");
     await db.insert(legalMessagesTable).values({
-      id: randomUUID(),
+      id: userMsgId,
       userId,
       conversationId,
       role: "user",
