@@ -13,7 +13,26 @@ import {
 } from "@workspace/db";
 import type { MessageParam, ImageBlockParam, TextBlockParam, DocumentBlockParam } from "@anthropic-ai/sdk/resources/messages";
 import { createRequire } from "module";
+import { execFile } from "child_process";
+import { promisify } from "util";
+import { writeFile, unlink } from "fs/promises";
+import { tmpdir } from "os";
+import { join } from "path";
 import { azureOcr } from "../lib/azureOcr";
+
+const execFileAsync = promisify(execFile);
+
+/** Extract plain text from a legacy binary .doc file via antiword. */
+async function extractDocText(buf: Buffer): Promise<string> {
+  const tmpPath = join(tmpdir(), `informed-doc-${randomUUID()}.doc`);
+  try {
+    await writeFile(tmpPath, buf);
+    const { stdout } = await execFileAsync("antiword", [tmpPath]);
+    return stdout.trim();
+  } finally {
+    await unlink(tmpPath).catch(() => {});
+  }
+}
 import {
   buildTieredPromptContext,
   extractDeltaFromTurn,
@@ -357,14 +376,16 @@ router.post("/informed/chat", async (req, res): Promise<void> => {
     }
 
     // Build document content blocks for Claude
-    // PDFs are sent as native base64 document blocks (Claude reads them directly).
-    // DOCX/DOC: extract via mammoth → plain-text document block.
-    // TXT: plain-text document block.
+    // PDFs: native base64 document blocks (Claude reads them directly).
+    // DOCX: extract via mammoth (modern XML-based Word format).
+    // DOC:  extract via antiword (legacy binary Word format — mammoth cannot read these).
+    // TXT:  plain-text document block.
     const docBlocks: DocumentBlockParam[] = [];
     if (hasDocs && documents) {
       for (const doc of documents) {
         const isPdf  = doc.mediaType === "application/pdf" || doc.name.toLowerCase().endsWith(".pdf");
-        const isDocx = !!(doc.mediaType?.includes("wordprocessingml") || doc.mediaType?.includes("msword") || doc.name.match(/\.docx?$/i));
+        const isDocx = !!(doc.mediaType?.includes("wordprocessingml") || doc.name.toLowerCase().endsWith(".docx"));
+        const isDoc  = !!(doc.mediaType === "application/msword" || (doc.name.toLowerCase().endsWith(".doc") && !doc.name.toLowerCase().endsWith(".docx")));
         const isText = doc.mediaType === "text/plain" || doc.name.toLowerCase().endsWith(".txt");
 
         if (isPdf && doc.data) {
@@ -374,6 +395,7 @@ router.post("/informed/chat", async (req, res): Promise<void> => {
             source: { type: "base64", media_type: "application/pdf", data: doc.data },
           } as DocumentBlockParam);
         } else if (isDocx && doc.data) {
+          // Modern .docx — mammoth handles XML-based Word format
           try {
             const buf = Buffer.from(doc.data, "base64");
             const result = await mammoth.extractRawText({ buffer: buf });
@@ -386,6 +408,20 @@ router.post("/informed/chat", async (req, res): Promise<void> => {
             }
           } catch (err) {
             req.log.warn({ err, name: doc.name }, "DOCX parse failed");
+          }
+        } else if (isDoc && doc.data) {
+          // Legacy binary .doc — mammoth cannot read this; use antiword
+          try {
+            const buf = Buffer.from(doc.data, "base64");
+            const extracted = await extractDocText(buf);
+            if (extracted) {
+              docBlocks.push({
+                type: "document",
+                source: { type: "text", media_type: "text/plain", data: cap(extracted, 80_000) },
+              } as DocumentBlockParam);
+            }
+          } catch (err) {
+            req.log.warn({ err, name: doc.name }, "DOC (legacy) parse failed via antiword");
           }
         } else if (isText && doc.text?.trim()) {
           docBlocks.push({
