@@ -345,20 +345,95 @@ OUTPUT REQUIREMENTS:
 
   const response = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
-    max_tokens: 4096,
+    max_tokens: 8192,
     messages: [{ role: "user", content: compressionPrompt }],
   });
 
   const raw = response.content[0]?.type === "text" ? response.content[0].text : "";
 
+  // Strip optional markdown fences so we can locate the JSON array cleanly
+  const stripped = raw
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/```\s*$/, "")
+    .trim();
+
   let compressedDelta: DeltaNode[] = [];
-  try {
-    const jsonMatch = raw.match(/\[[\s\S]*\]/);
-    if (jsonMatch) {
-      compressedDelta = JSON.parse(jsonMatch[0]) as DeltaNode[];
+
+  // ── Primary parse: find the outermost [...] array ────────────────────────────
+  // String-aware bracket depth scanner — skips [ and ] inside quoted strings
+  // so legal citations like "see [Exhibit 1]" don't throw off the depth count.
+  const tryExtractArray = (src: string): DeltaNode[] | null => {
+    const start = src.indexOf("[");
+    if (start === -1) return null;
+    let depth = 0;
+    let end = -1;
+    let inString = false;
+    let escape = false;
+    for (let i = start; i < src.length; i++) {
+      const c = src[i];
+      if (escape) { escape = false; continue; }
+      if (c === "\\") { escape = true; continue; }
+      if (c === '"') { inString = !inString; continue; }
+      if (inString) continue;
+      if (c === "[") depth++;
+      else if (c === "]") {
+        depth--;
+        if (depth === 0) { end = i; break; }
+      }
     }
-  } catch {
-    throw new Error(`compressTier: Failed to parse Claude compression output: ${raw.slice(0, 200)}`);
+    if (end === -1) return null; // truncated — no closing bracket found
+    try {
+      return JSON.parse(src.slice(start, end + 1)) as DeltaNode[];
+    } catch {
+      return null;
+    }
+  };
+
+  // ── Fallback parse: extract individual valid {...} objects when the array was
+  // truncated mid-stream (max_tokens hit). Uses a bracket-depth scanner so it
+  // doesn't fail on nested objects or special chars inside strings.
+  const tryExtractObjects = (src: string): DeltaNode[] => {
+    const results: DeltaNode[] = [];
+    let i = 0;
+    while (i < src.length) {
+      const objStart = src.indexOf("{", i);
+      if (objStart === -1) break;
+      let depth = 0;
+      let objEnd = -1;
+      let inString = false;
+      let escape = false;
+      for (let j = objStart; j < src.length; j++) {
+        const c = src[j];
+        if (escape) { escape = false; continue; }
+        if (c === "\\") { escape = true; continue; }
+        if (c === '"') { inString = !inString; continue; }
+        if (inString) continue;
+        if (c === "{") depth++;
+        else if (c === "}") {
+          depth--;
+          if (depth === 0) { objEnd = j; break; }
+        }
+      }
+      if (objEnd === -1) break;
+      try {
+        const obj = JSON.parse(src.slice(objStart, objEnd + 1)) as DeltaNode;
+        if (obj.tag && obj.text) results.push(obj);
+      } catch { /* skip malformed object */ }
+      i = objEnd + 1;
+    }
+    return results;
+  };
+
+  const parsed = tryExtractArray(stripped);
+  if (parsed && parsed.length > 0) {
+    compressedDelta = parsed;
+  } else {
+    // Fallback: recover whatever objects we can from a truncated response
+    compressedDelta = tryExtractObjects(stripped);
+    if (compressedDelta.length === 0) {
+      throw new Error(`compressTier: Failed to parse Claude compression output: ${raw.slice(0, 200)}`);
+    }
+    console.warn(`[tractatusMemory] compressTier: recovered ${compressedDelta.length} nodes from partial output (truncated?)`);
   }
 
   // Verify REJECTS preservation — abort if any are missing
