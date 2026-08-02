@@ -2,6 +2,14 @@ export type Timeframe = "daily" | "medium" | "long";
 export type ScheduleType = "on" | "by";
 export type Recurrence = "none" | "daily" | "weekly" | "monthly";
 
+/** A single checklist item inside a task. Completing one never marks the parent task done. */
+export interface SubTask {
+  id: string;
+  text: string;
+  /** ISO timestamp when checked off, or undefined if still open. */
+  doneAt?: string;
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -18,6 +26,8 @@ export interface Task {
   recurrenceEndDate?: string;
   createdAt: string;
   archived?: boolean;
+  /** Optional checklist items. Checking one off never marks the whole task done. */
+  subtasks?: SubTask[];
 }
 
 export type CompletionStatus = "done" | "partial";

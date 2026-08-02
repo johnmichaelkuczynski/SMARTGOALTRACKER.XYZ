@@ -11,6 +11,7 @@ import ocrRouter from "./ocr";
 import projectsRouter from "./projects";
 import informedRouter from "./informed";
 import legalRouter from "./legal";
+import accomplishmentsRouter from "./accomplishments";
 import { requireAuth } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
@@ -31,5 +32,6 @@ router.use(ocrRouter);
 router.use(projectsRouter);
 router.use(informedRouter);
 router.use(legalRouter);
+router.use(accomplishmentsRouter);
 
 export default router;

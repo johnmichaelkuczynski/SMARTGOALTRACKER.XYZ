@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { format } from "date-fns";
 import {
   Dialog,
@@ -21,8 +21,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
+import { Plus, Trash2, GripVertical } from "lucide-react";
 import { addTask, updateTask } from "@/lib/storage";
-import type { Recurrence, ScheduleType, Task, Timeframe } from "@/lib/types";
+import type { Recurrence, ScheduleType, SubTask, Task, Timeframe } from "@/lib/types";
 
 interface Props {
   open: boolean;
@@ -46,6 +47,9 @@ export function AddTaskDialog({ open, onOpenChange, defaults, editId }: Props) {
   const [recurrenceEndDate, setRecurrenceEndDate] = useState("");
   const [useImportance, setUseImportance] = useState(false);
   const [importance, setImportance] = useState(5);
+  const [subtasks, setSubtasks] = useState<SubTask[]>([]);
+  const [newSubtaskText, setNewSubtaskText] = useState("");
+  const newSubtaskRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
@@ -60,8 +64,26 @@ export function AddTaskDialog({ open, onOpenChange, defaults, editId }: Props) {
       setRecurrenceEndDate(defaults?.recurrenceEndDate ?? "");
       setUseImportance(typeof defaults?.importance === "number");
       setImportance(defaults?.importance ?? 5);
+      setSubtasks(defaults?.subtasks ?? []);
+      setNewSubtaskText("");
     }
   }, [open, defaults, today]);
+
+  function addSubtask() {
+    const text = newSubtaskText.trim();
+    if (!text) return;
+    setSubtasks((prev) => [...prev, { id: crypto.randomUUID(), text, doneAt: undefined }]);
+    setNewSubtaskText("");
+    setTimeout(() => newSubtaskRef.current?.focus(), 0);
+  }
+
+  function removeSubtask(id: string) {
+    setSubtasks((prev) => prev.filter((s) => s.id !== id));
+  }
+
+  function updateSubtaskText(id: string, text: string) {
+    setSubtasks((prev) => prev.map((s) => s.id === id ? { ...s, text } : s));
+  }
 
   function submit() {
     if (!title.trim()) return;
@@ -76,6 +98,7 @@ export function AddTaskDialog({ open, onOpenChange, defaults, editId }: Props) {
       recurrence: scheduleType === "by" ? ("none" as Recurrence) : recurrence,
       recurrenceEndDate: recurrenceEndDate || undefined,
       importance: useImportance ? importance : undefined,
+      subtasks: subtasks.length > 0 ? subtasks : undefined,
     };
     if (editId) {
       updateTask(editId, payload);
@@ -87,7 +110,7 @@ export function AddTaskDialog({ open, onOpenChange, defaults, editId }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-serif text-xl">{isEdit ? "Edit task" : "New task"}</DialogTitle>
         </DialogHeader>
@@ -235,6 +258,72 @@ export function AddTaskDialog({ open, onOpenChange, defaults, editId }: Props) {
             )}
           </div>
 
+          {/* ── Checklist ────────────────────────────────────────────────── */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>Checklist (optional)</Label>
+              <span className="text-[11px] text-muted-foreground">
+                Check items off individually — never marks the whole task done
+              </span>
+            </div>
+
+            {subtasks.length > 0 && (
+              <ul className="space-y-1.5">
+                {subtasks.map((s) => (
+                  <li key={s.id} className="flex items-center gap-2">
+                    <GripVertical className="h-3.5 w-3.5 text-muted-foreground/40 shrink-0" />
+                    <input
+                      type="text"
+                      value={s.text}
+                      onChange={(e) => updateSubtaskText(s.id, e.target.value)}
+                      className={`flex-1 rounded-md border border-border bg-background px-2.5 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring ${
+                        s.doneAt ? "line-through text-muted-foreground" : ""
+                      }`}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") { e.preventDefault(); newSubtaskRef.current?.focus(); }
+                      }}
+                    />
+                    {s.doneAt && (
+                      <span className="text-[10px] text-muted-foreground whitespace-nowrap">✓ done</span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => removeSubtask(s.id)}
+                      className="p-1 rounded text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <div className="flex items-center gap-2">
+              <input
+                ref={newSubtaskRef}
+                type="text"
+                value={newSubtaskText}
+                onChange={(e) => setNewSubtaskText(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") { e.preventDefault(); addSubtask(); }
+                }}
+                placeholder="Add a checklist item…"
+                className="flex-1 rounded-md border border-border bg-background px-2.5 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addSubtask}
+                disabled={!newSubtaskText.trim()}
+                className="shrink-0"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </div>
+
+          {/* ── Notes ───────────────────────────────────────────────────── */}
           <div className="space-y-2">
             <div className="flex items-center justify-between gap-3">
               <Label htmlFor="notes" className="text-base">Notes</Label>

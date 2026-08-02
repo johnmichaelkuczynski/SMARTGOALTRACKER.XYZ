@@ -1,8 +1,8 @@
 import { motion } from "framer-motion";
 import { format } from "date-fns";
-import { Trash2, Repeat, CalendarClock, Clock, Pencil } from "lucide-react";
+import { Trash2, Repeat, CalendarClock, Clock, Pencil, CheckSquare, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { deleteTask } from "@/lib/storage";
+import { deleteTask, toggleSubtask } from "@/lib/storage";
 import { CompletionControl } from "@/components/CompletionControl";
 import type { Completion, Task } from "@/lib/types";
 import { parse } from "@/lib/recurrence";
@@ -64,6 +64,27 @@ export function TaskRow({ task, date, completion, showDate, hideCompletion }: Pr
         </div>
         {task.notes && (
           <div className="text-xs text-muted-foreground mt-0.5 leading-snug">{task.notes}</div>
+        )}
+        {task.subtasks && task.subtasks.length > 0 && (
+          <ul className="mt-1.5 space-y-0.5">
+            {task.subtasks.map((s) => (
+              <li key={s.id}>
+                <button
+                  type="button"
+                  onClick={() => toggleSubtask(task.id, s.id)}
+                  className="flex items-start gap-1.5 text-left w-full group/sub"
+                >
+                  {s.doneAt
+                    ? <CheckSquare className="h-3.5 w-3.5 mt-0.5 shrink-0 text-primary" />
+                    : <Square className="h-3.5 w-3.5 mt-0.5 shrink-0 text-muted-foreground group-hover/sub:text-foreground transition-colors" />
+                  }
+                  <span className={`text-xs leading-snug ${s.doneAt ? "line-through text-muted-foreground" : "text-foreground/80 group-hover/sub:text-foreground transition-colors"}`}>
+                    {s.text}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
         )}
         {completion?.comment && (
           <div

@@ -11,3 +11,4 @@ export * from "./legalMessages";
 export * from "./legalConversations";
 export * from "./legalDocuments";
 export * from "./tractatus";
+export * from "./accomplishments";

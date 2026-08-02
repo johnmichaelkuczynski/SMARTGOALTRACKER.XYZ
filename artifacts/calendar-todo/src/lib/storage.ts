@@ -335,6 +335,25 @@ export function updateTask(id: string, patch: Partial<Task>) {
   persist();
 }
 
+/** Toggle one checklist item on a task. Never affects task-level completion. */
+export function toggleSubtask(taskId: string, subtaskId: string) {
+  state = {
+    ...state,
+    tasks: state.tasks.map((t) => {
+      if (t.id !== taskId) return t;
+      return {
+        ...t,
+        subtasks: (t.subtasks ?? []).map((s) =>
+          s.id === subtaskId
+            ? { ...s, doneAt: s.doneAt ? undefined : new Date().toISOString() }
+            : s,
+        ),
+      };
+    }),
+  };
+  persist();
+}
+
 export function deleteTask(id: string) {
   state = {
     ...state,
