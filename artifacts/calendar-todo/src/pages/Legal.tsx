@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Send, Trash2, Bot, User, Loader2, X, Copy, Check,
   Plus, MessageSquare, ChevronLeft, ChevronRight, ImageIcon, Paperclip,
-  FileText, Square, Download, CornerDownRight, Mic, MicOff, Scale,
+  FileText, Square, Download, CornerDownRight, Mic, MicOff, Scale, FolderOpen,
 } from "lucide-react";
 import { deviceId } from "@/lib/storage";
 import { Button } from "@/components/ui/button";
@@ -47,6 +47,16 @@ interface StoredAttachment {
   name: string;
   mediaType: string;
   data?: string;
+}
+
+interface LegalDocumentRow {
+  id: string;
+  conversationId: string | null;
+  name: string;
+  contentType: string;
+  size: number;
+  charCount: number | null;
+  createdAt: string;
 }
 
 interface Attachment {
@@ -232,6 +242,7 @@ export default function Legal() {
   const [streamError, setStreamError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [isDictating, setIsDictating] = useState(false);
+  const [showDocs, setShowDocs] = useState(false);
 
   // ── Response preferences ─────────────────────────────────────────────────────
   type RespLength = "natural" | "extremely_concise" | "concise" | "normal" | "thorough" | "extremely_thorough";
@@ -290,6 +301,15 @@ export default function Legal() {
       }
       setDeleteTarget(null);
     },
+  });
+
+  // ── All uploaded documents ──────────────────────────────────────────────────
+
+  const { data: allDocs = [], isLoading: docsLoading, refetch: refetchDocs } = useQuery<LegalDocumentRow[]>({
+    queryKey: ["legal-documents"],
+    queryFn: () => apiFetch<{ documents: LegalDocumentRow[] }>("/api/legal/documents").then((r) => r.documents),
+    refetchOnWindowFocus: false,
+    enabled: showDocs,
   });
 
   // ── Messages for active conversation ───────────────────────────────────────
@@ -601,6 +621,102 @@ export default function Legal() {
         }}
       />
 
+      {/* ── Document vault panel (right) ── */}
+      {showDocs && (
+        <div className="flex flex-col shrink-0 w-72 border-l border-border bg-background overflow-hidden order-last">
+          <div className="flex items-center justify-between px-3 pt-2 pb-2 shrink-0 border-b border-border">
+            <div className="flex items-center gap-2">
+              <FolderOpen className="h-4 w-4 text-amber-500" />
+              <span className="text-sm font-semibold">Uploaded Files</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowDocs(false)}
+              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto min-h-0 px-2 py-2 space-y-1">
+            {docsLoading && (
+              <div className="flex justify-center py-6"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+            )}
+            {!docsLoading && allDocs.length === 0 && (
+              <div className="text-xs text-muted-foreground text-center py-8 px-3">
+                <FileText className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                No documents uploaded yet.<br />Attach a PDF, Word doc, or TXT to any message.
+              </div>
+            )}
+            {!docsLoading && allDocs.length > 0 && (() => {
+              // Group by conversationId
+              const convMap = new Map<string | null, LegalDocumentRow[]>();
+              for (const doc of allDocs) {
+                const key = doc.conversationId ?? "__none__";
+                if (!convMap.has(key)) convMap.set(key, []);
+                convMap.get(key)!.push(doc);
+              }
+              return Array.from(convMap.entries()).map(([convId, docs]) => {
+                const convTitle = convId === "__none__"
+                  ? "No conversation"
+                  : (conversations.find((c) => c.id === convId)?.title ?? convId.slice(0, 8) + "…");
+                const isActive = convId === activeId;
+                return (
+                  <div key={convId} className="mb-2">
+                    <div
+                      className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] uppercase tracking-widest font-semibold cursor-pointer transition-colors ${
+                        isActive
+                          ? "text-amber-600 dark:text-amber-400"
+                          : "text-muted-foreground hover:text-foreground"
+                      }`}
+                      onClick={() => { if (convId !== "__none__") { setActiveId(convId); setShowDocs(false); } }}
+                      title={convId !== "__none__" ? "Jump to this conversation" : undefined}
+                    >
+                      <MessageSquare className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{convTitle}</span>
+                    </div>
+                    {docs.map((doc) => {
+                      const ext = doc.name.split(".").pop()?.toLowerCase() ?? "";
+                      const extColors: Record<string, string> = {
+                        pdf: "bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400",
+                        doc: "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400",
+                        docx: "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400",
+                        txt: "bg-muted text-muted-foreground",
+                      };
+                      const badge = extColors[ext] ?? "bg-muted text-muted-foreground";
+                      const kbSize = doc.size ? (doc.size / 1024).toFixed(0) + " KB" : null;
+                      const chars = doc.charCount ? doc.charCount.toLocaleString() + " chars" : null;
+                      return (
+                        <div
+                          key={doc.id}
+                          className="flex items-start gap-2 px-2 py-2 rounded-lg hover:bg-muted transition-colors group"
+                        >
+                          <FileText className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                          <div className="min-w-0 flex-1">
+                            <div className="text-xs font-medium leading-tight truncate" title={doc.name}>{doc.name}</div>
+                            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                              <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${badge}`}>{ext}</span>
+                              {kbSize && <span className="text-[10px] text-muted-foreground">{kbSize}</span>}
+                              {chars && <span className="text-[10px] text-muted-foreground">{chars}</span>}
+                            </div>
+                            <div className="text-[10px] text-muted-foreground mt-0.5">
+                              {new Date(doc.createdAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              });
+            })()}
+          </div>
+          <div className="shrink-0 px-3 py-2 border-t border-border text-[10px] text-muted-foreground">
+            {allDocs.length} file{allDocs.length !== 1 ? "s" : ""} total
+            {activeId && ` · ${allDocs.filter((d) => d.conversationId === activeId).length} in this chat`}
+          </div>
+        </div>
+      )}
+
       {/* ── Sidebar ── */}
       <div className={`flex flex-col shrink-0 border-r border-border transition-all duration-200 ${sidebarOpen ? "w-56" : "w-0 overflow-hidden"}`}>
         <div className="flex items-center justify-between px-3 pt-1 pb-2 shrink-0">
@@ -693,6 +809,24 @@ export default function Legal() {
             </div>
           </div>
           <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => { setShowDocs((v) => !v); if (!showDocs) void refetchDocs(); }}
+              title="Show all uploaded documents"
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
+                showDocs
+                  ? "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+            >
+              <FolderOpen className="h-3.5 w-3.5" />
+              Files
+              {allDocs.length > 0 && (
+                <span className="ml-0.5 bg-amber-500 text-white text-[9px] font-bold rounded-full px-1.5 py-0.5 leading-none">
+                  {allDocs.length}
+                </span>
+              )}
+            </button>
             <button
               type="button"
               onClick={() => createConversation.mutate(undefined)}
