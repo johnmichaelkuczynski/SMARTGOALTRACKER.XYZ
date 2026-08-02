@@ -39,11 +39,11 @@ async function extractDocText(buf: Buffer): Promise<string> {
 import {
   buildTieredPromptContext,
   extractDeltaFromTurn,
-  extractUserSkeleton,
-  skeletonToTier0,
   loadAllTiers,
   auditAgainstMemory,
   updateLiveTier,
+  viewAllTiers,
+  forceRepairMemory,
 } from "../services/tractatusMemory";
 
 const _require = createRequire(import.meta.url);
@@ -195,7 +195,7 @@ router.get("/legal/conversations/:id/messages", async (req, res): Promise<void> 
   }
 });
 
-// ── Tractatus memory status ───────────────────────────────────────────────────
+// ── Memory endpoints ──────────────────────────────────────────────────────────
 
 router.get("/legal/memory/status", async (req, res): Promise<void> => {
   const userId = req.userId!;
@@ -216,6 +216,34 @@ router.get("/legal/memory/status", async (req, res): Promise<void> => {
   } catch (err) {
     req.log.error({ err }, "Legal memory status failed");
     res.status(500).json({ error: "Failed to load memory status" });
+  }
+});
+
+/** Full memory viewer — returns every tier with every node. */
+router.get("/legal/memory/view", async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  const jobId = `${userId}-legal`;
+  const jobType = "legal_practice";
+  try {
+    const tiers = await viewAllTiers(jobId, jobType);
+    res.json({ tiers });
+  } catch (err) {
+    req.log.error({ err }, "Legal memory view failed");
+    res.status(500).json({ error: "Failed to load memory" });
+  }
+});
+
+/** Force-compress all bloated tiers. */
+router.post("/legal/memory/repair", async (req, res): Promise<void> => {
+  const userId = req.userId!;
+  const jobId = `${userId}-legal`;
+  const jobType = "legal_practice";
+  try {
+    const result = await forceRepairMemory(jobId, jobType);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    req.log.error({ err }, "Legal memory repair failed");
+    res.status(500).json({ error: "Repair failed" });
   }
 });
 
@@ -472,18 +500,6 @@ router.post("/legal/chat", async (req, res): Promise<void> => {
     let memoryContext = "";
     if (TRACTATUS_ENABLED) {
       try {
-        const existingTiers = await loadAllTiers(jobId, jobType);
-        const hasTier0 = existingTiers.some((t) => t.tier === 0);
-
-        if (!hasTier0) {
-          req.log.info({ jobId }, "Legal Tractatus: extracting initial skeleton");
-          const recentHistory = history.slice(-10).map((m) => ({ role: m.role, content: m.content }));
-          const stateForSkeleton = { tasks: [], rules: [], journal: [] };
-          const skeleton = await extractUserSkeleton(userId, stateForSkeleton, recentHistory);
-          await skeletonToTier0(skeleton, jobId, jobType);
-          req.log.info({ jobId, nodes: skeleton.outline.length }, "Legal Tractatus: Tier 0 created");
-        }
-
         memoryContext = await buildTieredPromptContext(jobId, jobType);
       } catch (err) {
         req.log.error({ err }, "Legal Tractatus memory build failed — falling back");
