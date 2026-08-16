@@ -44,6 +44,13 @@ const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 // blocks cookies, the device UUID Bearer keeps things working.
 setAuthTokenGetter(() => deviceId);
 
+// Fire-and-forget anonymous visit tracking (unique visitors, admin-only stats).
+void fetch(`${basePath}/api/track-visit`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ visitorId: deviceId }),
+}).catch(() => {});
+
 function AppRoutes() {
   const { data: auth, isLoading: authLoading } = useAuth();
   const status = useSyncStatus();

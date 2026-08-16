@@ -13,3 +13,4 @@ export * from "./legalDocuments";
 export * from "./tractatus";
 export * from "./accomplishments";
 export * from "./tips";
+export * from "./pageVisits";

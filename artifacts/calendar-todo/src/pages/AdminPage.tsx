@@ -27,7 +27,7 @@ type AdminData = {
   visits: { id: number; email: string | null; visitedAt: string }[];
 };
 
-function StatCard({ label, value }: { label: string; value: number }) {
+function StatCard({ label, value, unit = "logins", unitSingular = "login" }: { label: string; value: number; unit?: string; unitSingular?: string }) {
   return (
     <div className="rounded-xl border border-border bg-card p-5 flex flex-col gap-1">
       <div className="text-xs uppercase tracking-widest text-muted-foreground">
@@ -35,9 +35,54 @@ function StatCard({ label, value }: { label: string; value: number }) {
       </div>
       <div className="font-serif text-3xl text-foreground">{value}</div>
       <div className="text-xs text-muted-foreground">
-        {value === 1 ? "login" : "logins"}
+        {value === 1 ? unitSingular : unit}
       </div>
     </div>
+  );
+}
+
+type VisitorData = {
+  uniqueVisitors: {
+    allTime: number;
+    last24Hours: number;
+    lastWeek: number;
+    lastMonth: number;
+    lastYear: number;
+  };
+  totalVisits: number;
+};
+
+function UniqueVisitorsSection() {
+  const { data } = useQuery<VisitorData>({
+    queryKey: ["admin-unique-visitors"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/unique-visitors");
+      if (!res.ok) throw new Error("Failed to load visitor stats");
+      return res.json() as Promise<VisitorData>;
+    },
+    staleTime: 30_000,
+    retry: false,
+    refetchInterval: 60_000,
+  });
+
+  if (!data) return null;
+  const u = data.uniqueVisitors;
+  return (
+    <section>
+      <h2 className="text-xs uppercase tracking-widest text-muted-foreground mb-3">
+        Unique visitors
+      </h2>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+        <StatCard label="Last 24 hours" value={u.last24Hours} unit="visitors" unitSingular="visitor" />
+        <StatCard label="Last 7 days" value={u.lastWeek} unit="visitors" unitSingular="visitor" />
+        <StatCard label="Last 30 days" value={u.lastMonth} unit="visitors" unitSingular="visitor" />
+        <StatCard label="Last year" value={u.lastYear} unit="visitors" unitSingular="visitor" />
+        <StatCard label="All time" value={u.allTime} unit="visitors" unitSingular="visitor" />
+      </div>
+      <p className="text-xs text-muted-foreground mt-2">
+        Distinct devices that opened the app (signed in or not). {data.totalVisits} total visits recorded.
+      </p>
+    </section>
   );
 }
 
@@ -137,6 +182,8 @@ export default function AdminPage() {
           Google sign-in history and login statistics.
         </p>
       </header>
+
+      <UniqueVisitorsSection />
 
       <section>
         <h2 className="text-xs uppercase tracking-widest text-muted-foreground mb-3">

@@ -13,6 +13,7 @@ import informedRouter from "./informed";
 import legalRouter from "./legal";
 import accomplishmentsRouter from "./accomplishments";
 import tipsRouter from "./tips";
+import visitorsRouter from "./visitors";
 import { requireAuth } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
@@ -21,6 +22,8 @@ router.use(healthRouter);
 if (process.env.NODE_ENV !== "production") {
   router.use(testSecretsRouter);
 }
+
+router.use(visitorsRouter); // public track-visit + session-gated admin stats
 
 router.use(requireAuth);
 router.use(psychologyRouter);
