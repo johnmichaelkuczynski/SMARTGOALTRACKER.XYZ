@@ -6,6 +6,7 @@ import {
   jsonb,
   timestamp,
   index,
+  unique,
 } from "drizzle-orm/pg-core";
 
 export const tractatusTiersTable = pgTable(
@@ -24,6 +25,7 @@ export const tractatusTiersTable = pgTable(
   },
   (t) => [
     index("idx_tractatus_tiers_job").on(t.jobId, t.jobType, t.tier),
+    unique("uq_tractatus_tiers_job_tier").on(t.jobId, t.jobType, t.tier),
   ],
 );
 

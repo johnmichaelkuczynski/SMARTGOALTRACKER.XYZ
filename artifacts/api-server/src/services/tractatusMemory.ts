@@ -5,10 +5,28 @@
  * Tier 1 = live (new facts appended every turn).
  * Tier 2+ = progressively compressed summaries.
  * ALL tiers are dynamic — nothing is immutable.
- * Compression is chunked so large tiers never fail.
+ * Compression is chunked so arbitrarily large tiers never fail.
+ *
+ * FOUNDATION MODEL: The highest-numbered tier is the most compressed and
+ * serves as the authoritative foundation. buildTieredPromptContext renders
+ * the highest tier first (labelled FOUNDATION) so the LLM treats it with
+ * highest authority.
+ *
+ * CONCURRENCY SAFETY:
+ *   compressTier is split into two phases:
+ *   Phase 1 – read the tier + call Claude (outside any lock, long-running).
+ *   Phase 2 – write inside db.transaction() with pg_advisory_xact_lock so
+ *              lock acquisition, re-read, all writes, and lock release all
+ *              execute on the same pinned connection, serializing concurrent
+ *              compressions of the same tier without holding the lock during
+ *              Claude API calls.
+ *
+ *   DB INVARIANT: UNIQUE(job_id, job_type, tier) constraint on tractatus_tiers
+ *   ensures one row per tier. getTier picks the most-recently-updated row as a
+ *   last-resort dedup if the constraint was not yet present.
  */
 
-import { eq, and, asc } from "drizzle-orm";
+import { eq, and, asc, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { db, tractatusTiersTable, tractatusArchiveTable } from "@workspace/db";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
@@ -92,6 +110,26 @@ function generateKeys(existingNodes: TreeNode[], newCount: number): string[] {
   );
 }
 
+/**
+ * Produce a stable pair of signed int32 advisory lock keys for (jobId, jobType, tier).
+ * Uses FNV-1a hash of the job key. The tier is the second key component.
+ * These map to the two-argument form of pg_advisory_xact_lock(int4, int4).
+ */
+function tierLockKeys(jobId: string, jobType: string, tier: number): [number, number] {
+  const str = `${jobId}:${jobType}`;
+  // FNV-1a 32-bit
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    h ^= str.charCodeAt(i);
+    h = (Math.imul(h, 16777619) >>> 0);
+  }
+  // Convert to signed int32 for pg
+  const k1 = h | 0;
+  // Tier as second key (clamped to positive int32)
+  const k2 = tier & 0x7fffffff;
+  return [k1, k2];
+}
+
 // ── Database helpers ───────────────────────────────────────────────────────────
 
 export async function loadAllTiers(jobId: string, jobType: string): Promise<Tier[]> {
@@ -110,8 +148,14 @@ export async function loadAllTiers(jobId: string, jobType: string): Promise<Tier
   }));
 }
 
-async function getTier(jobId: string, jobType: string, tierNum: number): Promise<Tier | null> {
-  const rows = await db
+/**
+ * Load a single tier row using the given db-like querier (db or a transaction).
+ * If somehow multiple rows exist for the same tier (race before constraint was applied),
+ * picks the most recently-updated row.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function getTierQ(querier: any, jobId: string, jobType: string, tierNum: number): Promise<Tier | null> {
+  const rows = await querier
     .select()
     .from(tractatusTiersTable)
     .where(and(
@@ -119,6 +163,7 @@ async function getTier(jobId: string, jobType: string, tierNum: number): Promise
       eq(tractatusTiersTable.jobType, jobType),
       eq(tractatusTiersTable.tier, tierNum),
     ))
+    .orderBy(sql`${tractatusTiersTable.lastUpdate} DESC`)
     .limit(1);
   if (!rows[0]) return null;
   const r = rows[0];
@@ -130,6 +175,11 @@ async function getTier(jobId: string, jobType: string, tierNum: number): Promise
     compressionCount: r.compressionCount,
     lastUpdate: r.lastUpdate,
   };
+}
+
+/** Convenience wrapper using the global db connection (for reads outside transactions). */
+async function getTier(jobId: string, jobType: string, tierNum: number): Promise<Tier | null> {
+  return getTierQ(db, jobId, jobType, tierNum);
 }
 
 async function archiveTier(
@@ -235,52 +285,40 @@ OUTPUT REQUIREMENTS:
   return results;
 }
 
-/**
- * Compress sourceTier into sourceTier+1.
- * Uses chunked compression so arbitrarily large tiers never fail.
- * Archives first. After compression, trims source tier.
- */
-export async function compressTier(
-  jobId: string,
-  jobType: string,
-  sourceTier: number,
-): Promise<void> {
-  const tier = await getTier(jobId, jobType, sourceTier);
-  if (!tier) throw new Error(`compressTier: Tier ${sourceTier} not found for ${jobId}`);
-
-  await archiveTier(jobId, jobType, tier, "pre_compression");
-
-  const sourceNodes = treeNodes(tier);
-
-  // Chunked compression: split into COMPRESS_CHUNK_SIZE chunks, compress each, then merge-compress
-  let compressedDelta: DeltaNode[];
-
+/** Run chunked Claude compression on a list of nodes. Pure function — no DB access. */
+async function doChunkedCompression(sourceNodes: TreeNode[]): Promise<DeltaNode[]> {
   if (sourceNodes.length <= COMPRESS_CHUNK_SIZE) {
-    compressedDelta = await compressNodes(sourceNodes);
-  } else {
-    // First pass: compress each chunk independently
-    const chunks: TreeNode[][] = [];
-    for (let i = 0; i < sourceNodes.length; i += COMPRESS_CHUNK_SIZE) {
-      chunks.push(sourceNodes.slice(i, i + COMPRESS_CHUNK_SIZE));
-    }
-
-    const chunkResults: DeltaNode[] = [];
-    for (const chunk of chunks) {
-      const result = await compressNodes(chunk);
-      chunkResults.push(...result);
-    }
-
-    // Second pass: if still large, compress the chunk results together
-    if (chunkResults.length > COMPRESS_CHUNK_SIZE) {
-      const mergeNodes: TreeNode[] = chunkResults.map((d, idx) => ({
-        k: `${idx + 1}.0`, tag: d.tag, text: d.text,
-      }));
-      compressedDelta = await compressNodes(mergeNodes);
-    } else {
-      compressedDelta = chunkResults;
-    }
+    return compressNodes(sourceNodes);
   }
 
+  // First pass: compress each chunk independently
+  const chunks: TreeNode[][] = [];
+  for (let i = 0; i < sourceNodes.length; i += COMPRESS_CHUNK_SIZE) {
+    chunks.push(sourceNodes.slice(i, i + COMPRESS_CHUNK_SIZE));
+  }
+  const chunkResults: DeltaNode[] = [];
+  for (const chunk of chunks) {
+    chunkResults.push(...(await compressNodes(chunk)));
+  }
+
+  // Second pass: if still large, merge-compress
+  if (chunkResults.length > COMPRESS_CHUNK_SIZE) {
+    const mergeNodes: TreeNode[] = chunkResults.map((d, idx) => ({
+      k: `${idx + 1}.0`, tag: d.tag, text: d.text,
+    }));
+    return compressNodes(mergeNodes);
+  }
+  return chunkResults;
+}
+
+/**
+ * Build the final compressed node list, enforcing REJECTS/CONFLICT_FLAG preservation.
+ * Pure function — no DB access.
+ */
+function buildCompressedNodeList(
+  sourceNodes: TreeNode[],
+  compressedDelta: DeltaNode[],
+): TreeNode[] {
   // Enforce: never drop REJECTS or CONFLICT_FLAGs
   const srcRejects = sourceNodes.filter((n) => n.tag === "REJECTS").map((n) => n.text);
   const outRejects = compressedDelta.filter((d) => d.tag === "REJECTS").map((d) => d.text);
@@ -296,60 +334,156 @@ export async function compressTier(
       compressedDelta.push({ tag: "CONFLICT_FLAG", text: c });
     }
   }
+  return compressedDelta.map((d, i) => ({ k: `${i + 1}.0`, tag: d.tag, text: d.text }));
+}
 
-  const compressedNodes: TreeNode[] = compressedDelta.map((d, i) => ({
-    k: `${i + 1}.0`, tag: d.tag, text: d.text,
-  }));
+/**
+ * Compress sourceTier into sourceTier+1.
+ *
+ * TWO-PHASE CONCURRENCY DESIGN:
+ *
+ * Phase 1 (outside any lock):
+ *   Read the source tier and run chunked Claude compression.
+ *   This is the slow, long-running part — holding a DB lock here would
+ *   exhaust the connection pool under concurrent load.
+ *
+ * Phase 2 (inside db.transaction — one pinned connection):
+ *   1. Acquire pg_advisory_xact_lock(k1, k2) — transaction-level, so it
+ *      auto-releases on commit/rollback on the same connection.
+ *   2. Re-read the source tier to confirm it is still above threshold
+ *      (a concurrent process may have already compressed it during Phase 1).
+ *   3. Write compressed nodes to the destination tier.
+ *   4. Trim the source tier.
+ *   5. Record whether the destination tier now exceeds its threshold.
+ *
+ * Cascade happens after the transaction commits, using a fresh lock acquisition
+ * for the destination tier.
+ */
+export async function compressTier(
+  jobId: string,
+  jobType: string,
+  sourceTier: number,
+): Promise<void> {
+  const threshold = TIER_THRESHOLDS[sourceTier] ?? DEFAULT_THRESHOLD;
 
-  const destTier = sourceTier + 1;
-  const existing = await getTier(jobId, jobType, destTier);
+  // ── Phase 1: Read + Claude compression (outside any DB lock) ─────────────
+  const tier = await getTier(jobId, jobType, sourceTier);
+  if (!tier) {
+    console.warn(`[tractatusMemory] compressTier: Tier ${sourceTier} not found for ${jobId}`);
+    return;
+  }
+  if (tier.nodeCount < threshold) return; // already below threshold
 
-  if (existing) {
-    const existingNodes = treeNodes(existing);
-    const keys = generateKeys(existingNodes, compressedNodes.length);
-    const mergedNodes = [
-      ...existingNodes,
-      ...compressedNodes.map((n, i) => ({ ...n, k: keys[i] })),
-    ];
-    await db.update(tractatusTiersTable)
+  // Archive before compression (non-fatal, outside transaction)
+  await archiveTier(jobId, jobType, tier, "pre_compression");
+
+  const sourceNodes = treeNodes(tier);
+  const compressedDelta = await doChunkedCompression(sourceNodes);
+  const compressedNodes = buildCompressedNodeList(sourceNodes, compressedDelta);
+
+  // ── Phase 2: Write under transaction-level advisory lock ─────────────────
+  // pg_advisory_xact_lock holds for the duration of this transaction and
+  // releases automatically on commit/rollback — all on the same connection.
+  const [k1, k2] = tierLockKeys(jobId, jobType, sourceTier);
+  let cascadeDestTier: number | null = null;
+
+  await db.transaction(async (tx) => {
+    // All operations in this callback run on one pinned DB connection.
+    // The advisory lock serializes concurrent compressions of the same tier.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const q = tx as unknown as typeof db;
+
+    await q.execute(sql`SELECT pg_advisory_xact_lock(${k1}::int, ${k2}::int)`);
+
+    // Re-read under lock: if a concurrent process already compressed this tier
+    // during our Phase 1 (Claude), skip the write to avoid double-compression.
+    const freshTier = await getTierQ(q, jobId, jobType, sourceTier);
+    if (!freshTier || freshTier.nodeCount < threshold) {
+      return; // concurrent process handled it — nothing to write
+    }
+
+    const destTier = sourceTier + 1;
+    const existing = await getTierQ(q, jobId, jobType, destTier);
+
+    if (existing) {
+      const existingNodes = treeNodes(existing);
+      const keys = generateKeys(existingNodes, compressedNodes.length);
+      const mergedNodes = [
+        ...existingNodes,
+        ...compressedNodes.map((n, i) => ({ ...n, k: keys[i] })),
+      ];
+      await q.update(tractatusTiersTable)
+        .set({
+          tree: { nodes: mergedNodes } as unknown as Record<string, unknown>,
+          nodeCount: mergedNodes.length,
+          compressionCount: (existing.compressionCount ?? 0) + 1,
+          lastUpdate: new Date(),
+        })
+        .where(eq(tractatusTiersTable.id, existing.id));
+
+      // Check cascade condition based on post-merge count
+      const destThreshold = TIER_THRESHOLDS[destTier] ?? DEFAULT_THRESHOLD;
+      if (mergedNodes.length >= destThreshold) {
+        cascadeDestTier = destTier;
+      }
+    } else {
+      // No existing destTier row — insert one.
+      // ON CONFLICT handles the rare race where two processes both reached this
+      // branch simultaneously (unique constraint on job_id, job_type, tier).
+      await q.execute(sql`
+        INSERT INTO tractatus_tiers
+          (id, job_id, job_type, tier, tree, node_count, compression_count, last_update)
+        VALUES (
+          gen_random_uuid(),
+          ${jobId},
+          ${jobType},
+          ${destTier},
+          ${JSON.stringify({ nodes: compressedNodes })}::jsonb,
+          ${compressedNodes.length},
+          1,
+          NOW()
+        )
+        ON CONFLICT (job_id, job_type, tier) DO UPDATE SET
+          tree = jsonb_build_object('nodes',
+            (tractatus_tiers.tree -> 'nodes') ||
+            ${JSON.stringify(compressedNodes)}::jsonb
+          ),
+          node_count = jsonb_array_length(
+            (tractatus_tiers.tree -> 'nodes') ||
+            ${JSON.stringify(compressedNodes)}::jsonb
+          ),
+          compression_count = tractatus_tiers.compression_count + 1,
+          last_update = NOW()
+      `);
+
+      const destThreshold = TIER_THRESHOLDS[destTier] ?? DEFAULT_THRESHOLD;
+      if (compressedNodes.length >= destThreshold) {
+        cascadeDestTier = destTier;
+      }
+    }
+
+    // Trim source tier: keep load-bearing nodes + most-recent non-load-bearing up to POST_COMPRESS_KEEP
+    // Use freshTier's nodes (current state, read under lock) for the trim
+    const freshNodes = treeNodes(freshTier);
+    const loadBearing = freshNodes.filter((n) => isLoadBearing(n.tag));
+    const trimable = freshNodes.filter((n) => !isLoadBearing(n.tag));
+    const kept = trimable.slice(-Math.max(0, POST_COMPRESS_KEEP - loadBearing.length));
+    const trimmed = [...loadBearing, ...kept];
+
+    await q.update(tractatusTiersTable)
       .set({
-        tree: { nodes: mergedNodes } as unknown as Record<string, unknown>,
-        nodeCount: mergedNodes.length,
-        compressionCount: (existing.compressionCount ?? 0) + 1,
+        tree: { nodes: trimmed } as unknown as Record<string, unknown>,
+        nodeCount: trimmed.length,
         lastUpdate: new Date(),
       })
-      .where(eq(tractatusTiersTable.id, existing.id));
-  } else {
-    await db.insert(tractatusTiersTable).values({
-      id: randomUUID(),
-      jobId,
-      jobType,
-      tier: destTier,
-      tree: { nodes: compressedNodes } as unknown as Record<string, unknown>,
-      nodeCount: compressedNodes.length,
-      compressionCount: 1,
-    });
-  }
+      .where(eq(tractatusTiersTable.id, freshTier.id));
+    // Transaction commits here; pg_advisory_xact_lock released automatically.
+  });
 
-  // Trim source tier: keep load-bearing + most recent non-load-bearing up to POST_COMPRESS_KEEP
-  const loadBearing = sourceNodes.filter((n) => isLoadBearing(n.tag));
-  const trimable = sourceNodes.filter((n) => !isLoadBearing(n.tag));
-  const kept = trimable.slice(-Math.max(0, POST_COMPRESS_KEEP - loadBearing.length));
-  const trimmed = [...loadBearing, ...kept];
-
-  await db.update(tractatusTiersTable)
-    .set({
-      tree: { nodes: trimmed } as unknown as Record<string, unknown>,
-      nodeCount: trimmed.length,
-      lastUpdate: new Date(),
-    })
-    .where(eq(tractatusTiersTable.id, tier.id));
-
-  // Recursively compress higher tier if it exceeds its threshold
-  const destTierRow = await getTier(jobId, jobType, destTier);
-  const destThreshold = TIER_THRESHOLDS[destTier] ?? DEFAULT_THRESHOLD;
-  if (destTierRow && destTierRow.nodeCount >= destThreshold) {
-    await compressTier(jobId, jobType, destTier);
+  // ── Cascade: compress destination tier if it exceeded threshold ────────────
+  // Outside the transaction — acquires a fresh lock for destTier independently.
+  if (cascadeDestTier !== null) {
+    await compressTier(jobId, jobType, cascadeDestTier);
   }
 }
 
@@ -383,15 +517,23 @@ export async function updateLiveTier(
       })
       .where(eq(tractatusTiersTable.id, existing.id));
   } else {
-    await db.insert(tractatusTiersTable).values({
-      id: randomUUID(),
-      jobId,
-      jobType,
-      tier: 1,
-      tree: { nodes: allNodes } as unknown as Record<string, unknown>,
-      nodeCount,
-      compressionCount: 0,
-    });
+    // Use ON CONFLICT to handle rare concurrent inserts on Tier 1
+    await db.execute(sql`
+      INSERT INTO tractatus_tiers
+        (id, job_id, job_type, tier, tree, node_count, compression_count, last_update)
+      VALUES (
+        gen_random_uuid(), ${jobId}, ${jobType}, 1,
+        ${JSON.stringify({ nodes: allNodes })}::jsonb,
+        ${nodeCount}, 0, NOW()
+      )
+      ON CONFLICT (job_id, job_type, tier) DO UPDATE SET
+        tree = jsonb_build_object('nodes',
+          (tractatus_tiers.tree -> 'nodes') ||
+          ${JSON.stringify(newNodes)}::jsonb
+        ),
+        node_count = tractatus_tiers.node_count + ${newNodes.length},
+        last_update = NOW()
+    `);
   }
 
   const threshold = TIER_THRESHOLDS[1] ?? DEFAULT_THRESHOLD;
@@ -402,7 +544,6 @@ export async function updateLiveTier(
       compressed = true;
     } catch (err) {
       console.error("[tractatusMemory] Compression failed:", err);
-      // Re-throw so the caller knows — don't silently swallow
       throw err;
     }
   }
@@ -416,6 +557,7 @@ export async function updateLiveTier(
  * Build the tiered prompt context string for injection into the system prompt.
  * Total budget: ~20,000 characters.
  * Higher tiers (more compressed = more foundational) get priority.
+ * The highest-numbered tier is labelled FOUNDATION and shown first.
  */
 export async function buildTieredPromptContext(
   jobId: string,
@@ -498,34 +640,48 @@ export async function viewAllTiers(jobId: string, jobType: string): Promise<Tier
 // ── Force repair ───────────────────────────────────────────────────────────────
 
 /**
- * Force-compress all tiers down to a clean state.
- * Archives everything first, then compresses from the highest tier downward.
- * Use when tiers have become bloated and automatic compression has fallen behind.
+ * Force-compress all tiers to a clean state.
+ * Loops until every tier is below its threshold (up to MAX_ROUNDS iterations).
+ * Processes the lowest over-threshold tier each round and lets compressTier's
+ * cascade handle higher tiers automatically.
+ *
+ * Uses the same advisory-locked, two-phase compressTier path so repair is safe
+ * to call concurrently with live chat turns.
+ *
+ * FOUNDATION GUARANTEE: the highest-numbered tier is never deleted by repair —
+ * it serves as the durable foundation (most-compressed, authoritative summary
+ * of all prior memory). Lower tiers are trimmed after compression.
  */
-export async function forceRepairMemory(jobId: string, jobType: string): Promise<{ tiersRepaired: number }> {
-  const tiers = await loadAllTiers(jobId, jobType);
+export async function forceRepairMemory(
+  jobId: string,
+  jobType: string,
+): Promise<{ tiersRepaired: number; rounds: number }> {
   let tiersRepaired = 0;
+  const MAX_ROUNDS = 8;
 
-  // Archive all tiers first
-  for (const t of tiers) {
-    await archiveTier(jobId, jobType, t, "pre_repair");
-  }
+  for (let round = 1; round <= MAX_ROUNDS; round++) {
+    const tiers = await loadAllTiers(jobId, jobType);
 
-  // Compress all tiers that exceed their threshold, starting from highest
-  const sorted = [...tiers].sort((a, b) => b.tier - a.tier);
-  for (const t of sorted) {
-    const threshold = TIER_THRESHOLDS[t.tier] ?? DEFAULT_THRESHOLD;
-    if (t.nodeCount > threshold) {
-      try {
-        await compressTier(jobId, jobType, t.tier);
-        tiersRepaired++;
-      } catch (err) {
-        console.error(`[tractatusMemory] forceRepairMemory: failed to compress tier ${t.tier}:`, err);
-      }
+    // Find the lowest over-threshold tier (compressTier cascade handles higher ones)
+    const overThreshold = tiers
+      .sort((a, b) => a.tier - b.tier)
+      .find((t) => t.nodeCount > (TIER_THRESHOLDS[t.tier] ?? DEFAULT_THRESHOLD));
+
+    if (!overThreshold) {
+      // All tiers are below threshold — stable state reached
+      return { tiersRepaired, rounds: round - 1 };
+    }
+
+    try {
+      await compressTier(jobId, jobType, overThreshold.tier);
+      tiersRepaired++;
+    } catch (err) {
+      console.error(`[tractatusMemory] forceRepairMemory round ${round}: failed to compress tier ${overThreshold.tier}:`, err);
     }
   }
 
-  return { tiersRepaired };
+  console.warn(`[tractatusMemory] forceRepairMemory: hit MAX_ROUNDS (${MAX_ROUNDS}) for ${jobId}`);
+  return { tiersRepaired, rounds: MAX_ROUNDS };
 }
 
 // ── Audit ──────────────────────────────────────────────────────────────────────
