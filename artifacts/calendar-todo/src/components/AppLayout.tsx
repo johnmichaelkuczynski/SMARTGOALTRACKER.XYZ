@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, ListTodo, ListChecks, Target, BarChart3, BookOpen, Brain, MessageCircle, Plus, FileText, Settings, Ban, DownloadCloud, Check, RefreshCw, CloudOff, Loader2, LogOut, ShieldCheck, FolderOpen, Sparkles, Scale, Trophy } from "lucide-react";
+import { CalendarDays, ListTodo, ListChecks, Target, BarChart3, BookOpen, Brain, MessageCircle, Plus, FileText, Settings, Ban, DownloadCloud, Check, RefreshCw, CloudOff, Loader2, LogOut, ShieldCheck, FolderOpen, Sparkles, Scale, Trophy, Lightbulb } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -36,6 +36,7 @@ const NAV = [
   { href: "/informed", label: "Informed", icon: Sparkles },
   { href: "/legal", label: "Legal LLM", icon: Scale },
   { href: "/accomplishments", label: "Accomplishments", icon: Trophy },
+  { href: "/tips", label: "Tips", icon: Lightbulb },
 ];
 
 const ADMIN_EMAIL = "johnmichaelkuczynski@gmail.com";

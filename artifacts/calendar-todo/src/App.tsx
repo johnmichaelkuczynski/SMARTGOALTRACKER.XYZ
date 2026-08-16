@@ -28,6 +28,7 @@ import ProjectDetail from "@/pages/ProjectDetail";
 import Informed from "@/pages/Informed";
 import Legal from "@/pages/Legal";
 import Accomplishments from "@/pages/Accomplishments";
+import Tips from "@/pages/Tips";
 import { SignInPage } from "@/pages/AuthPages";
 import { AppLayout } from "@/components/AppLayout";
 import { useSyncStatus, deviceId, syncDevice, syncUser } from "@/lib/storage";
@@ -102,6 +103,7 @@ function AppRoutes() {
         <Route path="/informed" component={Informed} />
         <Route path="/legal" component={Legal} />
         <Route path="/accomplishments" component={Accomplishments} />
+        <Route path="/tips" component={Tips} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>

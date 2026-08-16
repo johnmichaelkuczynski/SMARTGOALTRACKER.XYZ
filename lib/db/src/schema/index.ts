@@ -12,3 +12,4 @@ export * from "./legalConversations";
 export * from "./legalDocuments";
 export * from "./tractatus";
 export * from "./accomplishments";
+export * from "./tips";

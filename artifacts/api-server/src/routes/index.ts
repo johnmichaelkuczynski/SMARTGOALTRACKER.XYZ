@@ -12,6 +12,7 @@ import projectsRouter from "./projects";
 import informedRouter from "./informed";
 import legalRouter from "./legal";
 import accomplishmentsRouter from "./accomplishments";
+import tipsRouter from "./tips";
 import { requireAuth } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
@@ -33,5 +34,6 @@ router.use(projectsRouter);
 router.use(informedRouter);
 router.use(legalRouter);
 router.use(accomplishmentsRouter);
+router.use(tipsRouter);
 
 export default router;
