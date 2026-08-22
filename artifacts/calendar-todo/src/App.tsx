@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Switch,
   Route,
@@ -31,8 +31,13 @@ import Accomplishments from "@/pages/Accomplishments";
 import Tips from "@/pages/Tips";
 import { SignInPage } from "@/pages/AuthPages";
 import { AppLayout } from "@/components/AppLayout";
-import { useSyncStatus, deviceId, syncUser } from "@/lib/storage";
-import { useAuth } from "@/lib/useAuth";
+import {
+  clearActiveSessionState,
+  useSyncStatus,
+  deviceId,
+  syncUser,
+} from "@/lib/storage";
+import { startGoogleSignIn, useAuth } from "@/lib/useAuth";
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -49,8 +54,12 @@ function AppRoutes() {
   const status = useSyncStatus();
 
   useEffect(() => {
-    if (authLoading || !auth?.authenticated || !auth.user) return;
-    void syncUser(String(auth.user.id));
+    if (authLoading) return;
+    if (auth?.authenticated && auth.user) {
+      void syncUser(String(auth.user.id));
+      return;
+    }
+    clearActiveSessionState();
   }, [authLoading, auth?.authenticated, auth?.user?.id]);
 
   if (authLoading) {
@@ -63,7 +72,10 @@ function AppRoutes() {
     );
   }
 
-  if (!auth?.authenticated) {
+  if (!auth?.authenticated || !auth.user) {
+    if (import.meta.env.DEV) {
+      return <OpenDevelopmentWorkspace />;
+    }
     return <SignInPage />;
   }
 
@@ -100,6 +112,28 @@ function AppRoutes() {
         <Route component={NotFound} />
       </Switch>
     </AppLayout>
+  );
+}
+
+function OpenDevelopmentWorkspace() {
+  const started = useRef(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    void startGoogleSignIn().catch(() => {
+      setError("Could not open your development workspace. Please reload this preview.");
+    });
+  }, []);
+
+  return (
+    <div className="flex min-h-[100dvh] items-center justify-center bg-background">
+      <div className="flex items-center gap-3 text-muted-foreground">
+        <Spinner className="h-5 w-5" />
+        {error ?? "Opening your workspace…"}
+      </div>
+    </div>
   );
 }
 

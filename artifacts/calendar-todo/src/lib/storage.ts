@@ -66,6 +66,25 @@ function readLocal(key: string): StoreState | null {
   }
 }
 
+function hasContent(s: StoreState | null | undefined): boolean {
+  if (!s) return false;
+  return (
+    (s.tasks?.length ?? 0) > 0 ||
+    (s.completions?.length ?? 0) > 0 ||
+    (s.rules?.length ?? 0) > 0 ||
+    (s.journal?.length ?? 0) > 0
+  );
+}
+
+function contentScore(s: StoreState): number {
+  return (
+    (s.tasks?.length ?? 0) +
+    (s.completions?.length ?? 0) +
+    (s.rules?.length ?? 0) +
+    (s.journal?.length ?? 0)
+  );
+}
+
 let activeUserId: string | null = null;
 // Bumped on every identity transition so stale in-flight requests can bail out.
 let syncToken = 0;
@@ -162,6 +181,19 @@ async function flushSave(userId: string) {
 /** Re-attempt the last server save (used by the "couldn't save" retry UI). */
 export function retrySave(): void {
   if (activeUserId) void flushSave(activeUserId);
+}
+
+/** Immediately remove all private in-memory state when a session ends. */
+export function clearActiveSessionState(): void {
+  syncToken += 1;
+  cancelPendingSave();
+  activeUserId = null;
+  state = emptyState();
+  syncStatus = "idle";
+  saveState = "idle";
+  suppressSave = false;
+  resaveQueued = false;
+  notify();
 }
 
 /** Load the signed-in user's state, hydrating only that user's local cache first. */
@@ -446,6 +478,10 @@ export type ImportResult = { ok: true; score: number } | { ok: false; error: str
  * Picks the richest non-empty candidate, adopts it, and syncs it to the server.
  */
 export function importState(jsonText: string): ImportResult {
+  if (!activeUserId) {
+    return { ok: false, error: "Sign in before restoring a backup." };
+  }
+
   let parsed: unknown;
   try {
     parsed = JSON.parse(jsonText);
@@ -483,8 +519,8 @@ export function importState(jsonText: string): ImportResult {
   let best: StoreState | null = null;
   let bestScore = 0;
   for (const c of candidates) {
-    if (isEmptyState(c)) continue;
-    const sc = scoreState(c);
+    if (!hasContent(c)) continue;
+    const sc = contentScore(c);
     if (sc > bestScore) {
       best = c;
       bestScore = sc;
@@ -497,8 +533,8 @@ export function importState(jsonText: string): ImportResult {
 
   // Safety net: before overwriting, stash the current data under a dedicated
   // backup key so a wrong import is recoverable. The key is deliberately NOT
-  // a `tally:v1*` key so it is never auto-adopted by orphan recovery.
-  if (!isEmptyState(state)) {
+  // a `tally:v1*` key so normal account sync never reads it.
+  if (hasContent(state)) {
     try {
       localStorage.setItem(
         `tally-preimport-backup:${activeUserId ?? "anon"}`,

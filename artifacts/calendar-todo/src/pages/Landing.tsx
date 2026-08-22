@@ -30,7 +30,7 @@ export function Landing() {
           </h1>
           <p className="text-lg text-muted-foreground mt-6 max-w-2xl mx-auto">
             A calendar-style tracker for daily habits, medium-term targets, and the long view.
-            Open it directly and let the Assistant read your own notes.
+            Sign in with Google to sync your private goals and let the Assistant read your notes.
           </p>
           <div className="flex items-center justify-center gap-3 mt-10">
             <Link href="/">

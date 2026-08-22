@@ -1,3 +1,5 @@
+import { startGoogleSignIn } from "@/lib/useAuth";
+
 export function SignInPage() {
   return (
     <div className="min-h-[100dvh] flex items-center justify-center bg-background">
@@ -17,7 +19,7 @@ export function SignInPage() {
         <button
           type="button"
           onClick={() => {
-            window.location.href = "/api/auth/google";
+            void startGoogleSignIn();
           }}
           className="flex items-center gap-3 rounded-xl border border-border bg-card px-6 py-3.5 text-sm font-medium text-foreground shadow-sm hover:bg-muted transition-colors focus:outline-none focus:ring-2 focus:ring-ring w-full justify-center"
         >

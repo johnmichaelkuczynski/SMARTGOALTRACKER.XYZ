@@ -10,7 +10,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { useAuth, useLogout } from "@/lib/useAuth";
+import { startGoogleSignIn, useAuth, useLogout } from "@/lib/useAuth";
 import { computeAnalytics } from "@/lib/analytics";
 import { useStore, useSaveState, retrySave } from "@/lib/storage";
 import { getViewDate } from "@/lib/viewDate";
@@ -31,13 +31,13 @@ const NAV = [
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/journal", label: "Journal", icon: BookOpen },
   { href: "/mind", label: "Mind", icon: Brain },
-  { href: "/assistant", label: "Assistant", icon: MessageCircle },
-  { href: "/documents", label: "Documents", icon: FileText },
-  { href: "/projects", label: "Projects", icon: FolderOpen },
-  { href: "/informed", label: "Informed", icon: Sparkles },
-  { href: "/legal", label: "Legal LLM", icon: Scale },
-  { href: "/accomplishments", label: "Accomplishments", icon: Trophy },
-  { href: "/tips", label: "Tips", icon: Lightbulb },
+  { href: "/assistant", label: "Assistant", icon: MessageCircle, requiresAuth: true },
+  { href: "/documents", label: "Documents", icon: FileText, requiresAuth: true },
+  { href: "/projects", label: "Projects", icon: FolderOpen, requiresAuth: true },
+  { href: "/informed", label: "Informed", icon: Sparkles, requiresAuth: true },
+  { href: "/legal", label: "Legal LLM", icon: Scale, requiresAuth: true },
+  { href: "/accomplishments", label: "Accomplishments", icon: Trophy, requiresAuth: true },
+  { href: "/tips", label: "Tips", icon: Lightbulb, requiresAuth: true },
 ];
 
 const ADMIN_EMAIL = "johnmichaelkuczynski@gmail.com";
@@ -51,6 +51,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const { tasks, completions } = useStore();
   const stats = computeAnalytics(tasks, completions);
   const { data: auth } = useAuth();
+  const isAuthenticated = Boolean(auth?.authenticated);
   const isAdmin = auth?.user?.email?.toLowerCase() === ADMIN_EMAIL;
   const editingTask = editId ? tasks.find((t) => t.id === editId) : undefined;
   const createDefaults = useMemo<Partial<Task> | undefined>(
@@ -118,7 +119,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <UserMenu />
         </div>
         <nav className="max-w-6xl mx-auto px-6 flex gap-0 -mb-px">
-          {NAV.map((n) => {
+          {NAV.filter((n) => isAuthenticated || !n.requiresAuth).map((n) => {
             const active = location === n.href;
             return (
               <Link
@@ -175,7 +176,7 @@ function UserMenu() {
           <button
             type="button"
             onClick={() => {
-              window.location.href = "/api/auth/google";
+              void startGoogleSignIn();
             }}
             className="flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground shadow-sm hover:bg-muted transition-colors focus:outline-none focus:ring-2 focus:ring-ring"
           >

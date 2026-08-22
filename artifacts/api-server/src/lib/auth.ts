@@ -20,6 +20,15 @@ declare global {
 }
 
 const CALLBACK_PATH = "/api/auth/google/callback";
+const ADMIN_EMAIL = "johnmichaelkuczynski@gmail.com";
+
+function requestOrigin(req: any): string {
+  const host = String(req.headers["x-forwarded-host"] || req.headers.host || "")
+    .split(",")[0]
+    .trim()
+    .toLowerCase();
+  return `${host.startsWith("localhost") ? "http" : "https"}://${host}`;
+}
 
 function getGoogleCredentials() {
   const clean = (value?: string) =>
@@ -107,7 +116,8 @@ export async function setupAuth(app: Express): Promise<void> {
       cookie: {
         secure: isProduction || Boolean(process.env.REPLIT_DEV_DOMAIN),
         httpOnly: true,
-        sameSite: "lax",
+        sameSite: isProduction ? "lax" : "none",
+        partitioned: !isProduction,
         maxAge: 30 * 24 * 60 * 60 * 1000,
       },
     }),
@@ -166,6 +176,37 @@ export async function setupAuth(app: Express): Promise<void> {
         prompt: "select_account",
         callbackURL: requestCallbackUrl(req),
       } as any)(req, res, next);
+
+    app.post("/api/auth/dev-owner-login", async (req: any, res: any, next: any) => {
+      if (process.env.NODE_ENV === "production") {
+        res.status(404).json({ error: "Not found" });
+        return;
+      }
+      const expectedDevHost = process.env.REPLIT_DEV_DOMAIN?.trim().toLowerCase();
+      const actualHost = new URL(requestOrigin(req)).host.toLowerCase();
+      if (!expectedDevHost || actualHost !== expectedDevHost) {
+        res.status(400).json({ error: "Invalid development preview host." });
+        return;
+      }
+      try {
+        const user = await storage.getUserByEmail(ADMIN_EMAIL);
+        if (!user) {
+          res.status(404).json({ error: "Development owner account not found." });
+          return;
+        }
+        req.login(user, (error: Error | null) => {
+          if (error) return next(error);
+          req.session.save((saveError: Error | null) => {
+            if (saveError) return next(saveError);
+            void storage.recordVisit(user.id, user.email ?? null);
+            res.json({ authenticated: true });
+          });
+        });
+      } catch (error) {
+        next(error);
+      }
+    });
+
     app.get("/api/auth/google", login);
     app.get("/auth/google", login);
     app.get(
@@ -221,8 +262,6 @@ export async function setupAuth(app: Express): Promise<void> {
     });
   });
 }
-
-const ADMIN_EMAIL = "johnmichaelkuczynski@gmail.com";
 
 export const isAdmin: RequestHandler = (req, res, next) => {
   if (req.isAuthenticated() && req.user?.email?.toLowerCase() === ADMIN_EMAIL) {
