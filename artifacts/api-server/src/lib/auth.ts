@@ -30,6 +30,13 @@ function requestOrigin(req: any): string {
   return `${host.startsWith("localhost") ? "http" : "https"}://${host}`;
 }
 
+function isTrustedDevelopmentRequest(req: any): boolean {
+  if (process.env.NODE_ENV === "production") return false;
+  const expectedDevHost = process.env.REPLIT_DEV_DOMAIN?.trim().toLowerCase();
+  if (!expectedDevHost) return false;
+  return new URL(requestOrigin(req)).host.toLowerCase() === expectedDevHost;
+}
+
 function getGoogleCredentials() {
   const clean = (value?: string) =>
     (value || "").replace(/[\u00A0\u200B\u200C\u200D\uFEFF]/g, "").trim();
@@ -134,6 +141,24 @@ export async function setupAuth(app: Express): Promise<void> {
     }
   });
 
+  app.use(async (req: any, _res, next) => {
+    if (!isTrustedDevelopmentRequest(req) || (req.isAuthenticated() && req.user)) {
+      next();
+      return;
+    }
+    try {
+      const owner = await storage.getUserByEmail(ADMIN_EMAIL);
+      if (!owner) {
+        next(new Error("Development owner account not found."));
+        return;
+      }
+      req.user = owner;
+      next();
+    } catch (error) {
+      next(error);
+    }
+  });
+
   if (googleEnabled) {
     passport.use(
       new GoogleStrategy(
@@ -182,9 +207,7 @@ export async function setupAuth(app: Express): Promise<void> {
         res.status(404).json({ error: "Not found" });
         return;
       }
-      const expectedDevHost = process.env.REPLIT_DEV_DOMAIN?.trim().toLowerCase();
-      const actualHost = new URL(requestOrigin(req)).host.toLowerCase();
-      if (!expectedDevHost || actualHost !== expectedDevHost) {
+      if (!isTrustedDevelopmentRequest(req)) {
         res.status(400).json({ error: "Invalid development preview host." });
         return;
       }
@@ -226,6 +249,7 @@ export async function setupAuth(app: Express): Promise<void> {
   }
 
   app.get("/api/auth/user", (req, res) => {
+    res.setHeader("Cache-Control", "private, no-store");
     if (!req.isAuthenticated() || !req.user) {
       res.json({ authenticated: false, user: null });
       return;

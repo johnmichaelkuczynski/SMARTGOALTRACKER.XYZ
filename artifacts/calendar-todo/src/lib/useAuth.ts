@@ -33,6 +33,7 @@ export function useAuth() {
       try {
         const response = await fetch("/api/auth/user", {
           credentials: "include",
+          cache: "no-store",
         });
         if (!response.ok) return { authenticated: false, user: null };
         return response.json() as Promise<AuthState>;
