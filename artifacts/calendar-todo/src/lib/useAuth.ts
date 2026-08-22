@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 export type AuthUser = {
   id: number;
@@ -17,9 +17,11 @@ export function useAuth() {
     queryKey: ["auth"],
     queryFn: async () => {
       try {
-        const res = await fetch("/api/auth/user");
-        if (!res.ok) return { authenticated: false, user: null };
-        return res.json() as Promise<AuthState>;
+        const response = await fetch("/api/auth/user", {
+          credentials: "include",
+        });
+        if (!response.ok) return { authenticated: false, user: null };
+        return response.json() as Promise<AuthState>;
       } catch {
         return { authenticated: false, user: null };
       }
@@ -30,13 +32,16 @@ export function useAuth() {
 }
 
 export function useLogout() {
-  const qc = useQueryClient();
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async () => {
-      await fetch("/api/auth/logout", { method: "POST" });
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "include",
+      });
     },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["auth"] });
+      void queryClient.invalidateQueries({ queryKey: ["auth"] });
     },
   });
 }

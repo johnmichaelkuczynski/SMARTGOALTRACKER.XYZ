@@ -5,7 +5,7 @@ import {
   Plus, MessageSquare, ChevronLeft, ChevronRight, ImageIcon, Paperclip,
   FileText, Square, Download, CornerDownRight, Mic, MicOff,
 } from "lucide-react";
-import { useStore, deviceId } from "@/lib/storage";
+import { useStore } from "@/lib/storage";
 import { buildAssistantContext } from "@/lib/assistantContext";
 import type { PsychAnalysis } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
@@ -69,7 +69,6 @@ async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
     ...opts,
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${deviceId}`,
       ...(opts?.headers ?? {}),
     },
     credentials: "include",
@@ -482,7 +481,6 @@ export default function Informed() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${deviceId}`,
         },
         credentials: "include",
         body: JSON.stringify(body),

@@ -31,8 +31,7 @@ export async function createApp(): Promise<Express> {
   app.use(cors({ credentials: true, origin: true }));
   app.use(express.json({ limit: "10mb" }));
   app.use(express.urlencoded({ extended: true }));
-
-  // Auth must be set up before routes so session/passport middleware runs first
+  app.set("trust proxy", 1);
   await setupAuth(app);
 
   app.use("/api", router);

@@ -1,7 +1,6 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Pencil, Check, X, Trophy } from "lucide-react";
-import { deviceId } from "@/lib/storage";
 
 // ── API helpers ───────────────────────────────────────────────────────────────
 
@@ -12,7 +11,6 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${deviceId}`,
       ...(init?.headers ?? {}),
     },
     credentials: "include",

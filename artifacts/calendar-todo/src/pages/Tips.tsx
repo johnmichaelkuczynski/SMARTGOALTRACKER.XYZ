@@ -1,7 +1,6 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Trash2, Pencil, Check, X, Lightbulb, Search, ChevronDown, ChevronRight } from "lucide-react";
-import { deviceId } from "@/lib/storage";
 import { useAuth } from "@/lib/useAuth";
 
 // ── API helpers ───────────────────────────────────────────────────────────────
@@ -13,7 +12,6 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${deviceId}`,
       ...(init?.headers ?? {}),
     },
     credentials: "include",
@@ -50,11 +48,12 @@ export default function Tips() {
   const titleRef = useRef<HTMLInputElement>(null);
 
   const { data: auth } = useAuth();
-  const identity = auth?.authenticated && auth.user ? `u:${auth.user.id}` : `d:${deviceId}`;
+  const identity = `u:${auth?.user?.id ?? "loading"}`;
 
   const { data, isLoading } = useQuery<{ tips: Tip[] }>({
     queryKey: ["tips", identity],
     queryFn: () => apiFetch("/api/tips"),
+    enabled: Boolean(auth?.user),
     refetchOnWindowFocus: false,
   });
 

@@ -66,61 +66,8 @@ function readLocal(key: string): StoreState | null {
   }
 }
 
-function isEmptyState(s: StoreState | null | undefined): boolean {
-  if (!s) return true;
-  return (
-    (s.tasks?.length ?? 0) === 0 &&
-    (s.completions?.length ?? 0) === 0 &&
-    (s.rules?.length ?? 0) === 0 &&
-    (s.journal?.length ?? 0) === 0
-  );
-}
-
-function scoreState(s: StoreState): number {
-  return (
-    (s.tasks?.length ?? 0) +
-    (s.completions?.length ?? 0) +
-    (s.rules?.length ?? 0) +
-    (s.journal?.length ?? 0)
-  );
-}
-
-/**
- * Recover orphaned data from a previous identity. When a user's Clerk ID
- * changes (e.g. the auth instance was re-provisioned), their old data is
- * stranded under a previous `tally:v1:<old-id>` key. Find the richest
- * non-empty blob under any tally key and adopt it. Non-destructive: the
- * original key is left intact as a backup.
- */
-function findRichestOrphan(excludeKey: string): StoreState | null {
-  let best: StoreState | null = null;
-  let bestScore = 0;
-  try {
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (!key) continue;
-      const isTallyKey = key === LEGACY_KEY || key.startsWith(`${LEGACY_KEY}:`);
-      if (!isTallyKey || key === excludeKey) continue;
-      const candidate = readLocal(key);
-      if (!candidate || isEmptyState(candidate)) continue;
-      const score = scoreState(candidate);
-      if (score > bestScore) {
-        best = candidate;
-        bestScore = score;
-      }
-    }
-  } catch {}
-  return best;
-}
-
-// Dynamic auth token: null = let session cookie handle auth (Google); string = Bearer device UUID
-let _authToken: string | null = deviceId;
-export function setAuthToken(token: string | null): void { _authToken = token; }
-export function getAuthToken(): string | null { return _authToken; }
-
-let activeUserId: string | null = deviceId;
-// Bumped on every account transition (sign-in, switch, sign-out) so in-flight
-// loads/saves can detect they belong to a stale session and bail out.
+let activeUserId: string | null = null;
+// Bumped on every identity transition so stale in-flight requests can bail out.
 let syncToken = 0;
 let syncStatus: SyncStatus = "idle";
 let saveState: SaveState = "idle";
@@ -217,12 +164,7 @@ export function retrySave(): void {
   if (activeUserId) void flushSave(activeUserId);
 }
 
-/** Boot the per-device sync (call once on app start). */
-export async function syncDevice(): Promise<void> {
-  return syncUser(deviceId);
-}
-
-/** Load the signed-in user's state from the server, hydrating from the local cache first for instant UI. */
+/** Load the signed-in user's state, hydrating only that user's local cache first. */
 export async function syncUser(userId: string): Promise<void> {
   if (activeUserId === userId && syncStatus === "ready") return;
   const token = ++syncToken;
@@ -230,13 +172,7 @@ export async function syncUser(userId: string): Promise<void> {
   activeUserId = userId;
   setSyncStatus("loading");
 
-  let cached = readLocal(keyFor(userId));
-  // If this identity has no data of its own, try to recover data stranded
-  // under a previous identity (e.g. after the auth instance changed).
-  if (isEmptyState(cached)) {
-    const recovered = findRichestOrphan(keyFor(userId));
-    if (recovered) cached = recovered;
-  }
+  const cached = readLocal(keyFor(userId));
   if (cached && token === syncToken) {
     state = cached;
     notify();
@@ -252,19 +188,7 @@ export async function syncUser(userId: string): Promise<void> {
       persist();
       suppressSave = false;
     } else {
-      // New account: adopt this user's cache, else migrate pre-login anonymous
-      // data once (then clear it so other accounts can't inherit it), else seed.
-      let initial = cached;
-      if (!initial) {
-        const legacy = readLocal(LEGACY_KEY);
-        if (legacy) {
-          initial = legacy;
-          try {
-            localStorage.removeItem(LEGACY_KEY);
-          } catch {}
-        }
-      }
-      state = normalize(initial ?? emptyState());
+      state = normalize(cached ?? emptyState());
       persist();
     }
   } catch {
@@ -273,9 +197,6 @@ export async function syncUser(userId: string): Promise<void> {
     if (token === syncToken) setSyncStatus("ready");
   }
 }
-
-/** No-op kept for API compatibility. */
-export function resetForSignOut(): void {}
 
 function subscribe(l: () => void) {
   listeners.add(l);

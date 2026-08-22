@@ -12,11 +12,8 @@ export function Landing() {
           <img src={`${basePath}/logo.svg`} alt="Goal Tracker" className="h-8 w-8" />
           <div className="font-serif text-2xl tracking-tight text-foreground">Goal Tracker</div>
           <div className="flex-1" />
-          <Link href="/sign-in">
-            <Button variant="ghost" size="sm">Sign in</Button>
-          </Link>
-          <Link href="/sign-up">
-            <Button size="sm">Get started</Button>
+          <Link href="/">
+            <Button size="sm">Open Goal Tracker</Button>
           </Link>
         </div>
       </header>
@@ -33,14 +30,11 @@ export function Landing() {
           </h1>
           <p className="text-lg text-muted-foreground mt-6 max-w-2xl mx-auto">
             A calendar-style tracker for daily habits, medium-term targets, and the long view.
-            Sign in to sync across every device — and let the Assistant read your own notes.
+            Open it directly and let the Assistant read your own notes.
           </p>
           <div className="flex items-center justify-center gap-3 mt-10">
-            <Link href="/sign-up">
-              <Button size="lg" className="gap-2">Create your account</Button>
-            </Link>
-            <Link href="/sign-in">
-              <Button size="lg" variant="outline">Sign in</Button>
+            <Link href="/">
+              <Button size="lg" className="gap-2">Open Goal Tracker</Button>
             </Link>
           </div>
         </section>
@@ -54,7 +48,7 @@ export function Landing() {
           <Feature
             icon={RefreshCw}
             title="Synced everywhere"
-            body="Your goals follow you across devices, tied securely to your account."
+            body="Your goals are saved securely to your signed-in Google account."
           />
           <Feature
             icon={FileText}

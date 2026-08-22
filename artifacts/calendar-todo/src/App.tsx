@@ -31,20 +31,13 @@ import Accomplishments from "@/pages/Accomplishments";
 import Tips from "@/pages/Tips";
 import { SignInPage } from "@/pages/AuthPages";
 import { AppLayout } from "@/components/AppLayout";
-import { useSyncStatus, deviceId, syncDevice, syncUser } from "@/lib/storage";
-import { setAuthTokenGetter } from "@workspace/api-client-react";
+import { useSyncStatus, deviceId, syncUser } from "@/lib/storage";
 import { useAuth } from "@/lib/useAuth";
 
 const queryClient = new QueryClient();
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
-// Always send device UUID as Bearer. Backend prefers Passport session (Google)
-// over Bearer when a valid session cookie is present — so in production the
-// Google user ID is used automatically. In the workspace iframe where SameSite
-// blocks cookies, the device UUID Bearer keeps things working.
-setAuthTokenGetter(() => deviceId);
-
-// Fire-and-forget anonymous visit tracking (unique visitors, admin-only stats).
+// Fire-and-forget anonymous visit tracking for visitor statistics.
 void fetch(`${basePath}/api/track-visit`, {
   method: "POST",
   headers: { "Content-Type": "application/json" },
@@ -56,15 +49,8 @@ function AppRoutes() {
   const status = useSyncStatus();
 
   useEffect(() => {
-    if (authLoading) return;
-    if (auth?.authenticated && auth.user) {
-      // Logged in with Google — try to sync under the stable Google account ID.
-      // If the session cookie is available (production), the backend uses the
-      // Google user ID; if blocked (iframe), falls back to device UUID Bearer.
-      void syncUser(auth.user.id.toString());
-    } else {
-      void syncDevice();
-    }
+    if (authLoading || !auth?.authenticated || !auth.user) return;
+    void syncUser(String(auth.user.id));
   }, [authLoading, auth?.authenticated, auth?.user?.id]);
 
   if (authLoading) {
@@ -77,7 +63,7 @@ function AppRoutes() {
     );
   }
 
-  if (!auth?.authenticated && !import.meta.env.DEV) {
+  if (!auth?.authenticated) {
     return <SignInPage />;
   }
 

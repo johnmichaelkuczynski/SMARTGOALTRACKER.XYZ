@@ -23,7 +23,7 @@ if (process.env.NODE_ENV !== "production") {
   router.use(testSecretsRouter);
 }
 
-router.use(visitorsRouter); // public track-visit + session-gated admin stats
+router.use(visitorsRouter);
 
 router.use(requireAuth);
 router.use(psychologyRouter);

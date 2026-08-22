@@ -6,7 +6,6 @@ import {
   FileText, Square, Download, CornerDownRight, Mic, MicOff, Scale, FolderOpen,
   Brain, ChevronDown, ChevronUp, Wrench,
 } from "lucide-react";
-import { deviceId } from "@/lib/storage";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
@@ -78,7 +77,6 @@ async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
     ...opts,
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${deviceId}`,
       ...(opts?.headers ?? {}),
     },
     credentials: "include",
@@ -507,7 +505,6 @@ export default function Legal() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${deviceId}`,
         },
         credentials: "include",
         body: JSON.stringify(body),
