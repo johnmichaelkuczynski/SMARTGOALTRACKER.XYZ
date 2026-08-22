@@ -48,8 +48,8 @@ function getGoogleCredentials() {
         "",
     ),
     clientSecret: clean(
-      process.env.GOOGLE_CLIENT_SECRET ||
-        process.env.GOOGLE_LOGIN_CLIENT_SECRET ||
+      process.env.GOOGLE_LOGIN_CLIENT_SECRET ||
+        process.env.GOOGLE_CLIENT_SECRET ||
         process.env.GOOGLE_OAUTH_CLIENT_SECRET ||
         "",
     ),
