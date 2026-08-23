@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, ListTodo, ListChecks, Target, BarChart3, BookOpen, Brain, MessageCircle, Plus, FileText, Settings, Ban, DownloadCloud, Check, RefreshCw, CloudOff, Loader2, LogOut, FolderOpen, Sparkles, Scale, Trophy, Lightbulb, Search } from "lucide-react";
+import { CalendarDays, ListTodo, ListChecks, Target, BarChart3, BookOpen, Brain, MessageCircle, Plus, FileText, Settings, Ban, DownloadCloud, Check, RefreshCw, CloudOff, Loader2, LogOut, FolderOpen, Sparkles, Scale, Trophy, Lightbulb } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -18,7 +18,7 @@ import type { Task } from "@/lib/types";
 import { AddTaskDialog } from "./AddTaskDialog";
 import { VoiceCapture } from "./VoiceCapture";
 import { RestoreDataDialog } from "./RestoreDataDialog";
-import { GlobalSearchDialog } from "./GlobalSearchDialog";
+import { GlobalSearchInput } from "./GlobalSearchDialog";
 import { GoogleIcon } from "@/pages/AuthPages";
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -46,7 +46,6 @@ const ADMIN_EMAIL = "johnmichaelkuczynski@gmail.com";
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [open, setOpen] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
   const [editId, setEditId] = useState<string | undefined>(undefined);
   const [createDate, setCreateDate] = useState<string | undefined>(undefined);
   const [createExtra, setCreateExtra] = useState<Partial<Task> | undefined>(undefined);
@@ -84,27 +83,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  useEffect(() => {
-    function onKeyDown(event: KeyboardEvent) {
-      const target = event.target as HTMLElement | null;
-      const isTyping =
-        target?.tagName === "INPUT" ||
-        target?.tagName === "TEXTAREA" ||
-        target?.isContentEditable;
-      const commandShortcut =
-        (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k";
-      const slashShortcut = event.key === "/" && !isTyping;
-
-      if (commandShortcut || slashShortcut) {
-        event.preventDefault();
-        setSearchOpen((current) => !current);
-      }
-    }
-
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
-
   function openCreate() {
     setEditId(undefined);
     setCreateDate(getViewDate());
@@ -135,17 +113,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <Stat label="Long" value={`${Math.round(stats.byTimeframe.long.rate * 100)}%`} />
           </div>
           <SaveIndicator />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="gap-2"
-            onClick={() => setSearchOpen(true)}
-            aria-label="Search tasks and goals"
-          >
-            <Search className="h-4 w-4" />
-            <span className="hidden lg:inline">Search</span>
-          </Button>
+          <GlobalSearchInput />
           <VoiceCapture />
           <Button onClick={openCreate} size="sm" className="gap-2">
             <Plus className="h-4 w-4" /> Add
@@ -191,7 +159,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         editId={editId}
         defaults={editingTask ?? createDefaults}
       />
-      <GlobalSearchDialog open={searchOpen} onOpenChange={setSearchOpen} />
     </div>
   );
 }
