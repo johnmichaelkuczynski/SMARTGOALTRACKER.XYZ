@@ -5,6 +5,7 @@ import { useStore } from "@/lib/storage";
 import { Input } from "@/components/ui/input";
 import { TaskRow } from "@/components/TaskRow";
 import type { Completion, Task, Timeframe } from "@/lib/types";
+import { taskMatchesQuery } from "@/lib/taskSearch";
 
 type StatusFilter = "all" | "active" | "completed";
 type TimeframeFilter = "all" | Timeframe;
@@ -39,10 +40,7 @@ export default function AllTasks() {
       })
       .filter((t) => {
         if (!q) return true;
-        return (
-          t.title.toLowerCase().includes(q) ||
-          (t.notes ?? "").toLowerCase().includes(q)
-        );
+        return taskMatchesQuery(t, q);
       })
       .sort((a, b) => b.date.localeCompare(a.date));
   }, [tasks, completions, query, status, timeframe, showArchived]);
@@ -68,7 +66,7 @@ export default function AllTasks() {
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by title or notes..."
+            placeholder="Search titles, notes, or checklist items..."
             className="pl-9"
           />
         </div>
