@@ -76,10 +76,18 @@ export interface JournalEntry {
   updatedAt: string;
 }
 
+export interface DiaryEntry {
+  /** Local calendar date in yyyy-MM-dd format. */
+  date: string;
+  text: string;
+  updatedAt: string;
+}
+
 export interface StoreState {
   tasks: Task[];
   completions: Completion[];
   journal: JournalEntry[];
+  diary?: DiaryEntry[];
   /** Self-imposed negative commands (things not to do). */
   rules?: Rule[];
   seeded: boolean;

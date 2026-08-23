@@ -31,6 +31,7 @@ const NAV = [
   { href: "/goals", label: "Goals", icon: Target },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/journal", label: "Journal", icon: BookOpen },
+  { href: "/diary", label: "Diary", icon: BookOpen },
   { href: "/mind", label: "Mind", icon: Brain },
   { href: "/assistant", label: "Assistant", icon: MessageCircle, requiresAuth: true },
   { href: "/documents", label: "Documents", icon: FileText, requiresAuth: true },

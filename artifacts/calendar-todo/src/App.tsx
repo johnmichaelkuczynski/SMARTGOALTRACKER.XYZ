@@ -19,6 +19,7 @@ import Upcoming from "@/pages/Upcoming";
 import Goals from "@/pages/Goals";
 import Analytics from "@/pages/Analytics";
 import Journal from "@/pages/Journal";
+import Diary from "@/pages/Diary";
 import Mind from "@/pages/Mind";
 import Assistant from "@/pages/Assistant";
 import Documents from "@/pages/Documents";
@@ -99,6 +100,7 @@ function AppRoutes() {
         <Route path="/goals" component={Goals} />
         <Route path="/analytics" component={Analytics} />
         <Route path="/journal" component={Journal} />
+        <Route path="/diary" component={Diary} />
         <Route path="/mind" component={Mind} />
         <Route path="/assistant" component={Assistant} />
         <Route path="/documents" component={Documents} />

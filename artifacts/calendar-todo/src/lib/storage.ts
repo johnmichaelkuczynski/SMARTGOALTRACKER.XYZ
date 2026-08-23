@@ -6,6 +6,7 @@ import {
 import type {
   Completion,
   CompletionStatus,
+  DiaryEntry,
   JournalEntry,
   JournalPeriod,
   Rule,
@@ -45,7 +46,7 @@ function keyFor(userId: string | null): string {
 }
 
 function emptyState(): StoreState {
-  return { tasks: [], completions: [], journal: [], rules: [], seeded: false };
+  return { tasks: [], completions: [], journal: [], diary: [], rules: [], seeded: false };
 }
 
 function normalize(raw: Partial<StoreState> | null | undefined): StoreState {
@@ -53,6 +54,7 @@ function normalize(raw: Partial<StoreState> | null | undefined): StoreState {
   if (!s.tasks) s.tasks = [];
   if (!s.completions) s.completions = [];
   if (!s.journal) s.journal = [];
+  if (!s.diary) s.diary = [];
   if (!s.rules) s.rules = [];
   return s;
 }
@@ -72,7 +74,8 @@ function hasContent(s: StoreState | null | undefined): boolean {
     (s.tasks?.length ?? 0) > 0 ||
     (s.completions?.length ?? 0) > 0 ||
     (s.rules?.length ?? 0) > 0 ||
-    (s.journal?.length ?? 0) > 0
+    (s.journal?.length ?? 0) > 0 ||
+    (s.diary?.length ?? 0) > 0
   );
 }
 
@@ -81,7 +84,8 @@ function contentScore(s: StoreState): number {
     (s.tasks?.length ?? 0) +
     (s.completions?.length ?? 0) +
     (s.rules?.length ?? 0) +
-    (s.journal?.length ?? 0)
+    (s.journal?.length ?? 0) +
+    (s.diary?.length ?? 0)
   );
 }
 
@@ -399,6 +403,23 @@ export function deleteJournalEntry(period: JournalPeriod, periodKey: string) {
   persist();
 }
 
+export function getDiaryEntry(date: string): DiaryEntry | undefined {
+  return (state.diary ?? []).find((entry) => entry.date === date);
+}
+
+/** Upsert one diary entry for a calendar day. Empty text removes the entry. */
+export function setDiaryEntry(date: string, text: string) {
+  const trimmed = text.trim();
+  const rest = (state.diary ?? []).filter((entry) => entry.date !== date);
+  state = {
+    ...state,
+    diary: trimmed
+      ? [...rest, { date, text: trimmed, updatedAt: new Date().toISOString() }]
+      : rest,
+  };
+  persist();
+}
+
 /** Save the user's own context for the Mind analysis. Empty text clears it. */
 export function setMindContext(text: string) {
   const trimmed = text.trim();
@@ -458,7 +479,7 @@ export function reinstateRule(id: string) {
 }
 
 export function clearAll() {
-  state = { tasks: [], completions: [], journal: [], rules: [], seeded: true };
+  state = { tasks: [], completions: [], journal: [], diary: [], rules: [], seeded: true };
   persist();
 }
 
@@ -494,7 +515,7 @@ export function importState(jsonText: string): ImportResult {
     !!o &&
     typeof o === "object" &&
     !Array.isArray(o) &&
-    ["tasks", "completions", "rules", "journal"].some((k) =>
+    ["tasks", "completions", "rules", "journal", "diary"].some((k) =>
       Array.isArray((o as Record<string, unknown>)[k]),
     );
 
@@ -528,7 +549,7 @@ export function importState(jsonText: string): ImportResult {
   }
 
   if (!best) {
-    return { ok: false, error: "No tasks, rules, or journal entries were found in that backup." };
+    return { ok: false, error: "No tasks, rules, journal entries, or diary entries were found in that backup." };
   }
 
   // Safety net: before overwriting, stash the current data under a dedicated
