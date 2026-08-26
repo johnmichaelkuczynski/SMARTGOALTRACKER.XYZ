@@ -100,7 +100,21 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen flex flex-col bg-background">
       <header className="border-b border-border bg-card/60 backdrop-blur sticky top-0 z-30">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center gap-6">
-          <div className="flex items-baseline gap-3">
+          <div className="flex items-center gap-3">
+            <a
+              href="https://zhisystems.ai/"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Visit ZHI Systems"
+              title="ZHI Systems"
+              className="shrink-0 rounded-md border border-border bg-white p-0.5 shadow-sm transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-ring"
+            >
+              <img
+                src={`${basePath}/zhi-logo.png`}
+                alt="ZHI Systems"
+                className="h-8 w-8 rounded object-contain"
+              />
+            </a>
             <div className="font-serif text-2xl tracking-tight text-foreground">Goal Tracker</div>
             <div className="text-xs uppercase tracking-widest text-muted-foreground hidden sm:block">
               honest follow-through
@@ -150,6 +164,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
               Admin
             </Link>
           )}
+          <a
+            href="mailto:jmkuczynski@yahoo.com"
+            className="whitespace-nowrap border-b-2 border-transparent px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Contact us
+          </a>
         </nav>
       </header>
       <main className="flex-1 max-w-6xl mx-auto px-6 py-8 w-full">{children}</main>
