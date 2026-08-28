@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { PsychCategory } from './psychCategory';
+import type { PsychDataSource } from './psychDataSource';
 import type { PsychTrait } from './psychTrait';
 
 export interface PsychAnalysis {
@@ -15,4 +16,5 @@ export interface PsychAnalysis {
   traits: PsychTrait[];
   categories: PsychCategory[];
   insights: string[];
+  source: PsychDataSource;
 }

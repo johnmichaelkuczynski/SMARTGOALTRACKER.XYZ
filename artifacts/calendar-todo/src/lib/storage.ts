@@ -94,6 +94,7 @@ let activeUserId: string | null = null;
 let syncToken = 0;
 let syncStatus: SyncStatus = "idle";
 let saveState: SaveState = "idle";
+let serverUpdatedAt: string | null = null;
 let suppressSave = false;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 // Single-flight save guard: only one save is ever in flight, and any change
@@ -119,6 +120,12 @@ function setSyncStatus(s: SyncStatus) {
 function setSaveState(s: SaveState) {
   if (saveState === s) return;
   saveState = s;
+  notify();
+}
+
+function setServerUpdatedAt(value: string | null) {
+  if (serverUpdatedAt === value) return;
+  serverUpdatedAt = value;
   notify();
 }
 
@@ -162,8 +169,9 @@ async function flushSave(userId: string) {
   const token = syncToken;
   const snapshot = state;
   try {
-    await saveServerState({ data: snapshot as unknown as Record<string, unknown> });
+    const saved = await saveServerState({ data: snapshot as unknown as Record<string, unknown> });
     if (token === syncToken && activeUserId === userId) {
+      setServerUpdatedAt(saved.updatedAt);
       // Stay in "saving" if newer changes are already queued/pending.
       if (!resaveQueued && !saveTimer) setSaveState("saved");
     }
@@ -187,6 +195,31 @@ export function retrySave(): void {
   if (activeUserId) void flushSave(activeUserId);
 }
 
+/** Wait until every pending local change has reached the signed-in user's database row. */
+export async function ensureStateSaved(): Promise<void> {
+  const userId = activeUserId;
+  if (!userId) throw new Error("No signed-in user.");
+
+  const hadPendingTimer = saveTimer !== null;
+  cancelPendingSave();
+
+  if (saving) {
+    if (hadPendingTimer) resaveQueued = true;
+  } else if (hadPendingTimer || saveState === "error") {
+    await flushSave(userId);
+  }
+
+  const deadline = Date.now() + 15_000;
+  while (saving || resaveQueued || saveTimer) {
+    if (Date.now() >= deadline) throw new Error("Timed out saving the latest workspace data.");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
+  if (saveState === "error") {
+    throw new Error("The latest workspace data could not be saved.");
+  }
+}
+
 /** Immediately remove all private in-memory state when a session ends. */
 export function clearActiveSessionState(): void {
   syncToken += 1;
@@ -195,6 +228,7 @@ export function clearActiveSessionState(): void {
   state = emptyState();
   syncStatus = "idle";
   saveState = "idle";
+  serverUpdatedAt = null;
   suppressSave = false;
   resaveQueued = false;
   notify();
@@ -219,11 +253,13 @@ export async function syncUser(userId: string): Promise<void> {
     // Bail if the session changed while the request was in flight.
     if (token !== syncToken) return;
     if (res.data && typeof res.data === "object") {
+      setServerUpdatedAt(res.updatedAt);
       suppressSave = true;
       state = normalize(res.data as Partial<StoreState>);
       persist();
       suppressSave = false;
     } else {
+      setServerUpdatedAt(res.updatedAt);
       state = normalize(cached ?? emptyState());
       persist();
     }
@@ -231,6 +267,28 @@ export async function syncUser(userId: string): Promise<void> {
     // Offline or server error: keep whatever cache we have.
   } finally {
     if (token === syncToken) setSyncStatus("ready");
+  }
+}
+
+/** Flush local edits, then replace in-memory state with the latest authenticated database row. */
+export async function refreshUserState(): Promise<void> {
+  const userId = activeUserId;
+  if (!userId) throw new Error("No signed-in user.");
+  await ensureStateSaved();
+
+  const token = syncToken;
+  const res = await fetchServerState();
+  if (token !== syncToken || activeUserId !== userId) return;
+
+  setServerUpdatedAt(res.updatedAt);
+  if (res.data && typeof res.data === "object") {
+    suppressSave = true;
+    try {
+      state = normalize(res.data as Partial<StoreState>);
+      persist();
+    } finally {
+      suppressSave = false;
+    }
   }
 }
 
@@ -262,6 +320,14 @@ export function useSaveState(): SaveState {
     subscribe,
     () => saveState,
     () => saveState,
+  );
+}
+
+export function useServerUpdatedAt(): string | null {
+  return useSyncExternalStore(
+    subscribe,
+    () => serverUpdatedAt,
+    () => serverUpdatedAt,
   );
 }
 

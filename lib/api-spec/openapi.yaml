@@ -543,6 +543,8 @@ components:
           type: array
           items:
             type: string
+        source:
+          $ref: "#/components/schemas/PsychDataSource"
       required:
         - generatedAt
         - headline
@@ -550,6 +552,32 @@ components:
         - traits
         - categories
         - insights
+        - source
+    PsychDataSource:
+      type: object
+      properties:
+        databaseUpdatedAt:
+          type: ["string", "null"]
+        taskCount:
+          type: integer
+        completionCount:
+          type: integer
+        journalCount:
+          type: integer
+        diaryCount:
+          type: integer
+        accomplishmentCount:
+          type: integer
+        ruleCount:
+          type: integer
+      required:
+        - databaseUpdatedAt
+        - taskCount
+        - completionCount
+        - journalCount
+        - diaryCount
+        - accomplishmentCount
+        - ruleCount
     PsychChatMessage:
       type: object
       properties:

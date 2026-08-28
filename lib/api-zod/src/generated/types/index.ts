@@ -26,6 +26,7 @@ export * from './psychCategory';
 export * from './psychChatInput';
 export * from './psychChatMessage';
 export * from './psychChatReply';
+export * from './psychDataSource';
 export * from './psychPlan';
 export * from './psychPlanInput';
 export * from './psychPlanMove';

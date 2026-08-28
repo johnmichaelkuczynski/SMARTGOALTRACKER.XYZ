@@ -68,6 +68,17 @@ export interface PsychAnalysisInput {
   context?: string | null;
 }
 
+export interface PsychDataSource {
+  /** @nullable */
+  databaseUpdatedAt: string | null;
+  taskCount: number;
+  completionCount: number;
+  journalCount: number;
+  diaryCount: number;
+  accomplishmentCount: number;
+  ruleCount: number;
+}
+
 export interface PsychAnalysis {
   generatedAt: string;
   headline: string;
@@ -75,6 +86,7 @@ export interface PsychAnalysis {
   traits: PsychTrait[];
   categories: PsychCategory[];
   insights: string[];
+  source: PsychDataSource;
 }
 
 export interface PsychChatMessage {

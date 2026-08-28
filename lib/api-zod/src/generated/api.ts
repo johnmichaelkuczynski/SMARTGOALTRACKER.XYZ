@@ -57,7 +57,16 @@ export const AnalyzePsychologyResponse = zod.object({
   "due": zod.number(),
   "rate": zod.number()
 })),
-  "insights": zod.array(zod.string())
+  "insights": zod.array(zod.string()),
+  "source": zod.object({
+  "databaseUpdatedAt": zod.string().nullable(),
+  "taskCount": zod.number(),
+  "completionCount": zod.number(),
+  "journalCount": zod.number(),
+  "diaryCount": zod.number(),
+  "accomplishmentCount": zod.number(),
+  "ruleCount": zod.number()
+})
 })
 
 

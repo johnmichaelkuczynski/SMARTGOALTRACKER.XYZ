@@ -1,5 +1,7 @@
 import { Router, type IRouter } from "express";
+import { count, desc, eq } from "drizzle-orm";
 import { openai } from "@workspace/integrations-openai-ai-server";
+import { accomplishmentsTable, db, userStateTable } from "@workspace/db";
 import {
   AnalyzePsychologyBody,
   AnalyzePsychologyResponse,
@@ -38,6 +40,156 @@ type Reflection = {
   text: string;
 };
 
+type StoredTask = {
+  id?: string;
+  title?: string;
+  notes?: string;
+  timeframe?: string;
+  importance?: number;
+  date?: string;
+  scheduleType?: string;
+  recurrence?: string;
+  recurrenceEndDate?: string;
+  archived?: boolean;
+  subtasks?: { text?: string; doneAt?: string }[];
+};
+
+type StoredCompletion = {
+  taskId?: string;
+  date?: string;
+  status?: string;
+  comment?: string;
+};
+
+type StoredState = {
+  tasks?: StoredTask[];
+  completions?: StoredCompletion[];
+  journal?: { period?: string; periodKey?: string; text?: string; updatedAt?: string }[];
+  diary?: { date?: string; text?: string; updatedAt?: string }[];
+  rules?: { text?: string; notes?: string; status?: string; outcome?: string }[];
+  mindContext?: string;
+};
+
+const ANALYSIS_HORIZON_DAYS = 365;
+
+function startOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function addDays(date: Date, amount: number): Date {
+  const next = new Date(date);
+  next.setDate(next.getDate() + amount);
+  return startOfDay(next);
+}
+
+function addMonths(date: Date, amount: number): Date {
+  return new Date(date.getFullYear(), date.getMonth() + amount, date.getDate());
+}
+
+function formatStoredDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function parseStoredDate(value: string | undefined): Date | null {
+  if (!value) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const parsed = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  return Number.isNaN(parsed.getTime()) ? null : startOfDay(parsed);
+}
+
+function storedOccurrences(task: StoredTask, start: Date, end: Date): string[] {
+  const taskDate = parseStoredDate(task.date);
+  if (!taskDate) return [];
+  const recurrenceEnd = parseStoredDate(task.recurrenceEndDate);
+  const scheduleType = task.scheduleType ?? "on";
+  const recurrence = task.recurrence ?? "none";
+
+  if (scheduleType === "by" || recurrence === "none") {
+    return taskDate >= start && taskDate <= end
+      ? [formatStoredDate(taskDate)]
+      : [];
+  }
+
+  const limit = recurrenceEnd && recurrenceEnd < end ? recurrenceEnd : end;
+  const occurrences: string[] = [];
+
+  if (recurrence === "monthly") {
+    const anchorDay = taskDate.getDate();
+    for (let n = 0; n <= 600; n += 1) {
+      const candidate = addMonths(taskDate, n);
+      if (candidate > limit) break;
+      if (
+        candidate.getDate() === anchorDay &&
+        candidate >= start &&
+        candidate <= limit
+      ) {
+        occurrences.push(formatStoredDate(candidate));
+      }
+    }
+    return occurrences;
+  }
+
+  let cursor = taskDate < start ? start : taskDate;
+  if (recurrence === "weekly") {
+    while (
+      (cursor.getTime() - taskDate.getTime()) % (7 * 24 * 60 * 60 * 1000) !== 0 &&
+      cursor <= end
+    ) {
+      cursor = addDays(cursor, 1);
+    }
+  }
+
+  while (cursor <= limit) {
+    occurrences.push(formatStoredDate(cursor));
+    if (recurrence === "daily") cursor = addDays(cursor, 1);
+    else if (recurrence === "weekly") cursor = addDays(cursor, 7);
+    else break;
+  }
+  return occurrences;
+}
+
+function completionCredit(completion: StoredCompletion | undefined): number {
+  if (!completion) return 0;
+  return completion.status === "partial" ? 0.5 : 1;
+}
+
+function storedStats(task: StoredTask, completions: StoredCompletion[]) {
+  const today = startOfDay(new Date());
+  const start = addDays(today, -ANALYSIS_HORIZON_DAYS);
+  const occurrences = storedOccurrences(task, start, today);
+  let done = 0;
+
+  for (const occurrence of occurrences) {
+    if (task.scheduleType === "by") {
+      const deadline = parseStoredDate(occurrence)?.getTime() ?? 0;
+      let best = 0;
+      for (const completion of completions) {
+        const completionDate = parseStoredDate(completion.date)?.getTime();
+        if (completion.taskId === task.id && completionDate != null && completionDate <= deadline) {
+          best = Math.max(best, completionCredit(completion));
+        }
+      }
+      done += best;
+    } else {
+      done += completionCredit(
+        completions.find(
+          (completion) => completion.taskId === task.id && completion.date === occurrence,
+        ),
+      );
+    }
+  }
+
+  return {
+    done,
+    due: occurrences.length,
+    rate: occurrences.length > 0 ? done / occurrences.length : 0,
+  };
+}
+
 /** Render the user's own accounts of what they accomplished, most recent first, capped to keep prompts bounded. */
 function reflectionLines(reflections: Reflection[] | undefined): string {
   if (!reflections || reflections.length === 0) return "";
@@ -74,7 +226,17 @@ Return ONLY JSON with this exact shape:
   "insights": [ string ]         // 2-4 sharp observations linking goal-nature to follow-through
 }`;
 
-function emptyAnalysis() {
+type DataSource = {
+  databaseUpdatedAt: string | null;
+  taskCount: number;
+  completionCount: number;
+  journalCount: number;
+  diaryCount: number;
+  accomplishmentCount: number;
+  ruleCount: number;
+};
+
+function emptyAnalysis(source: DataSource) {
   return {
     generatedAt: new Date().toISOString(),
     headline: "Not enough to go on yet",
@@ -83,6 +245,7 @@ function emptyAnalysis() {
     traits: [],
     categories: [],
     insights: [],
+    source,
   };
 }
 
@@ -94,11 +257,87 @@ router.post("/psychology/analysis", async (req, res): Promise<void> => {
     return;
   }
 
-  const goals = parsed.data.goals as GoalSnapshot[];
-  const reflections = parsed.data.reflections as Reflection[] | undefined;
-  const context = ((parsed.data.context as string | null | undefined)?.trim() || "").slice(0, 4000);
+  const userId = req.userId!;
+  const [stateRows, accomplishments, accomplishmentTotals] = await Promise.all([
+    db
+      .select()
+      .from(userStateTable)
+      .where(eq(userStateTable.userId, userId))
+      .limit(1),
+    db
+      .select()
+      .from(accomplishmentsTable)
+      .where(eq(accomplishmentsTable.userId, userId))
+      .orderBy(desc(accomplishmentsTable.date))
+      .limit(120),
+    db
+      .select({ value: count() })
+      .from(accomplishmentsTable)
+      .where(eq(accomplishmentsTable.userId, userId)),
+  ]);
+
+  const stateRow = stateRows[0];
+  const stored = (stateRow?.data ?? {}) as StoredState;
+  const storedTasks = Array.isArray(stored.tasks) ? stored.tasks : [];
+  const storedCompletions = Array.isArray(stored.completions) ? stored.completions : [];
+  const submittedGoals = parsed.data.goals as GoalSnapshot[];
+  const activeStoredTasks = storedTasks.filter((task) => !task.archived);
+  const goals: GoalSnapshot[] =
+    stateRow
+      ? activeStoredTasks.map((task) => {
+          const stats = storedStats(task, storedCompletions);
+          return {
+            title: task.title?.trim() || "Untitled goal",
+            notes: task.notes?.trim() || null,
+            timeframe: task.timeframe || "daily",
+            importance: task.importance ?? null,
+            ...stats,
+          };
+        })
+      : submittedGoals;
+
+  const databaseReflections: (Reflection & { updatedAt: string })[] = [
+    ...(stored.journal ?? [])
+      .filter((entry) => entry.text?.trim())
+      .map((entry) => ({
+        period: entry.period || "journal",
+        label: entry.periodKey || "Journal entry",
+        text: entry.text!.trim(),
+        updatedAt: entry.updatedAt || entry.periodKey || "",
+      })),
+    ...(stored.diary ?? [])
+      .filter((entry) => entry.text?.trim())
+      .map((entry) => ({
+        period: "diary",
+        label: entry.date || "Diary entry",
+        text: entry.text!.trim(),
+        updatedAt: entry.updatedAt || entry.date || "",
+      })),
+    ...accomplishments.map((entry) => ({
+      period: "accomplishment",
+      label: entry.date,
+      text: entry.text,
+      updatedAt: entry.updatedAt.toISOString(),
+    })),
+  ];
+  const reflections: Reflection[] = databaseReflections
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .slice(0, 160)
+    .map(({ period, label, text }) => ({ period, label, text }));
+  const submittedContext =
+    ((parsed.data.context as string | null | undefined)?.trim() || "").slice(0, 4000);
+  const context = (stored.mindContext?.trim() || submittedContext).slice(0, 4000);
+  const source: DataSource = {
+    databaseUpdatedAt: stateRow?.updatedAt.toISOString() ?? null,
+    taskCount: storedTasks.length,
+    completionCount: storedCompletions.length,
+    journalCount: (stored.journal ?? []).length,
+    diaryCount: (stored.diary ?? []).length,
+    accomplishmentCount: Number(accomplishmentTotals[0]?.value ?? 0),
+    ruleCount: (stored.rules ?? []).length,
+  };
   if (goals.length === 0 && (!reflections || reflections.length === 0) && !context) {
-    res.json(AnalyzePsychologyResponse.parse(emptyAnalysis()));
+    res.json(AnalyzePsychologyResponse.parse(emptyAnalysis(source)));
     return;
   }
 
@@ -114,15 +353,58 @@ router.post("/psychology/analysis", async (req, res): Promise<void> => {
     : "(no explicit goals set)";
 
   const reflectionBlock = reflectionLines(reflections);
-  const userContent = `Here are my goals and how reliably I follow through on each:\n\n${goalLines}${
+  const databaseHistory = storedTasks
+    .slice(-300)
+    .map((task) => {
+      const completionCount = storedCompletions.filter(
+        (completion) => completion.taskId && completion.taskId === task.id,
+      ).length;
+      const checklist = (task.subtasks ?? [])
+        .filter((item) => item.text?.trim())
+        .slice(0, 20)
+        .map((item) => `${item.doneAt ? "[done]" : "[open]"} ${item.text!.trim()}`)
+        .join("; ");
+      return `${task.archived ? "[archived]" : "[active]"} ${task.title || "Untitled"}${
+        task.date ? ` | date ${task.date}` : ""
+      } | ${completionCount} recorded completions${
+        task.notes ? ` | notes: ${task.notes.slice(0, 1200)}` : ""
+      }${checklist ? ` | checklist: ${checklist}` : ""}`;
+    })
+    .join("\n");
+  const ruleHistory = (stored.rules ?? [])
+    .slice(-100)
+    .map(
+      (rule) =>
+        `[${rule.status || "unknown"}${rule.outcome ? `/${rule.outcome}` : ""}] ${
+          rule.text || "Untitled rule"
+        }${rule.notes ? ` — ${rule.notes.slice(0, 800)}` : ""}`,
+    )
+    .join("\n");
+  const databaseSummary = `Authoritative database snapshot:
+- Database record updated: ${stateRow?.updatedAt.toISOString() ?? "not available"}
+- Stored tasks/goals: ${storedTasks.length} (${activeStoredTasks.length} active, ${
+    storedTasks.length - activeStoredTasks.length
+  } archived)
+- Stored completion records: ${storedCompletions.length}
+- Stored journal entries: ${(stored.journal ?? []).length}
+- Stored diary entries: ${(stored.diary ?? []).length}
+- Stored accomplishments: ${accomplishments.length}
+- Stored personal rules: ${(stored.rules ?? []).length}`;
+  const userContent = `${databaseSummary}
+
+Here are my current active goals and database-backed follow-through statistics:
+
+${goalLines}${
     reflectionBlock
-      ? `\n\nAnd here, in my own words, is what I actually accomplished in each period (this may diverge from the goals above):\n\n${reflectionBlock}`
+      ? `\n\nHere are my newest database-stored journal entries, diary entries, and accomplishments:\n\n${reflectionBlock}`
       : ""
+  }${databaseHistory ? `\n\nHere is the broader stored task history, including archived items, notes, checklists, and completion counts:\n\n${databaseHistory}` : ""}${
+    ruleHistory ? `\n\nHere are my stored personal rules and their outcomes:\n\n${ruleHistory}` : ""
   }${
     context
-      ? `\n\nAnd here, in my own words, is some context I want you to weigh — my side of the story, things the stats and journal above don't capture:\n\n${context}`
+      ? `\n\nHere is my database-stored personal context, which should genuinely affect the profile:\n\n${context}`
       : ""
-  }\n\nProfile me.`;
+  }\n\nBuild a fresh profile from this current database snapshot. Give substantial weight to recent entries and changes; do not repeat an older profile merely because earlier themes still exist.`;
 
   try {
     const completion = await openai.chat.completions.create({
@@ -203,6 +485,7 @@ router.post("/psychology/analysis", async (req, res): Promise<void> => {
       traits,
       categories,
       insights: (data.insights ?? []).filter((s): s is string => typeof s === "string"),
+      source,
     };
 
     res.json(AnalyzePsychologyResponse.parse(result));

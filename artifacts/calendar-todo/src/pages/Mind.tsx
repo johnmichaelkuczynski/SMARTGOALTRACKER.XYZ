@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { format, parseISO } from "date-fns";
+import { useQuery } from "@tanstack/react-query";
 import { Brain, Send, RefreshCw, Loader2, MessageSquarePlus, Check, ArrowRight, ListChecks } from "lucide-react";
 import {
   useAnalyzePsychology,
@@ -9,46 +11,112 @@ import {
   type PsychPlan,
   type GoalSnapshot,
 } from "@workspace/api-client-react";
-import { useStore, setMindContext } from "@/lib/storage";
+import {
+  ensureStateSaved,
+  refreshUserState,
+  setMindContext,
+  useServerUpdatedAt,
+  useStore,
+} from "@/lib/storage";
 import { goalSnapshots } from "@/lib/analytics";
 import { periodLabel, keyToDate } from "@/lib/periods";
+import { useAuth } from "@/lib/useAuth";
 import { Button } from "@/components/ui/button";
 import { ImageOcrButton } from "@/components/ImageOcrButton";
 import { DocumentTextButton } from "@/components/DocumentTextButton";
 
 const ANALYSIS_KEY = "tally:psych:v1";
+const ANALYSIS_SOURCE_KEY = "tally:psych-source:v1";
 const CHAT_KEY = "tally:psych-chat:v1";
 const PLAN_KEY = "tally:psych-plan:v1";
 
-function loadAnalysis(): PsychAnalysis | null {
+function userCacheKey(base: string, userId: string): string {
+  return `${base}:${userId}`;
+}
+
+function loadAnalysis(userId: string): PsychAnalysis | null {
   try {
-    const raw = localStorage.getItem(ANALYSIS_KEY);
+    const raw = localStorage.getItem(userCacheKey(ANALYSIS_KEY, userId));
     return raw ? (JSON.parse(raw) as PsychAnalysis) : null;
   } catch {
     return null;
   }
 }
 
-function loadPlan(): PsychPlan | null {
+function loadPlan(userId: string): PsychPlan | null {
   try {
-    const raw = localStorage.getItem(PLAN_KEY);
+    const raw = localStorage.getItem(userCacheKey(PLAN_KEY, userId));
     return raw ? (JSON.parse(raw) as PsychPlan) : null;
   } catch {
     return null;
   }
 }
 
-function loadChat(): PsychChatMessage[] {
+function loadChat(userId: string): PsychChatMessage[] {
   try {
-    const raw = localStorage.getItem(CHAT_KEY);
+    const raw = localStorage.getItem(userCacheKey(CHAT_KEY, userId));
     return raw ? (JSON.parse(raw) as PsychChatMessage[]) : [];
   } catch {
     return [];
   }
 }
 
+function loadAnalysisSource(userId: string): string | null {
+  try {
+    return localStorage.getItem(userCacheKey(ANALYSIS_SOURCE_KEY, userId));
+  } catch {
+    return null;
+  }
+}
+
+function fingerprint(value: unknown): string {
+  const input = JSON.stringify(value);
+  let hash = 2166136261;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
 export default function Mind() {
-  const { tasks, completions, journal, mindContext } = useStore();
+  const { data: auth } = useAuth();
+  if (!auth?.user) return null;
+  return <MindForUser key={auth.user.id} userId={String(auth.user.id)} />;
+}
+
+function MindForUser({ userId }: { userId: string }) {
+  const { tasks, completions, journal, diary = [], rules = [], mindContext } = useStore();
+  const serverUpdatedAt = useServerUpdatedAt();
+  const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const {
+    data: accomplishmentData,
+    isLoading: accomplishmentsLoading,
+    isFetching: accomplishmentsFetching,
+    refetch: refetchAccomplishments,
+  } = useQuery<{
+    accomplishments: {
+      id: string;
+      text: string;
+      date: string;
+      createdAt: string;
+      updatedAt?: string;
+    }[];
+  }>({
+    queryKey: ["accomplishments"],
+    queryFn: async () => {
+      const response = await fetch(`${basePath}/api/accomplishments`, {
+        credentials: "include",
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error("Could not load accomplishments.");
+      return response.json();
+    },
+    staleTime: 0,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
+  });
+  const accomplishments = accomplishmentData?.accomplishments ?? [];
   const goals = useMemo<GoalSnapshot[]>(
     () => goalSnapshots(tasks, completions),
     [tasks, completions],
@@ -56,25 +124,39 @@ export default function Mind() {
 
   const reflections = useMemo(
     () =>
-      [...journal]
-        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-        .slice(0, 30)
-        .map((e) => ({
-          period: e.period,
-          label: periodLabel(e.period, keyToDate(e.period, e.periodKey)),
-          text: e.text,
+      [
+        ...journal.map((entry) => ({
+          updatedAt: entry.updatedAt,
+          period: entry.period,
+          label: periodLabel(entry.period, keyToDate(entry.period, entry.periodKey)),
+          text: entry.text,
         })),
-    [journal],
+        ...diary.map((entry) => ({
+          updatedAt: entry.updatedAt,
+          period: "day",
+          label: format(parseISO(entry.date), "EEEE, MMMM d, yyyy"),
+          text: entry.text,
+        })),
+      ]
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        .slice(0, 80)
+        .map(({ period, label, text }) => ({ period, label, text })),
+    [diary, journal],
   );
 
-  const [analysis, setAnalysis] = useState<PsychAnalysis | null>(() => loadAnalysis());
-  const [plan, setPlan] = useState<PsychPlan | null>(() => loadPlan());
-  const [chat, setChat] = useState<PsychChatMessage[]>(() => loadChat());
+  const [analysis, setAnalysis] = useState<PsychAnalysis | null>(() => loadAnalysis(userId));
+  const [analysisSource, setAnalysisSource] = useState<string | null>(() =>
+    loadAnalysisSource(userId),
+  );
+  const [plan, setPlan] = useState<PsychPlan | null>(() => loadPlan(userId));
+  const [chat, setChat] = useState<PsychChatMessage[]>(() => loadChat(userId));
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [planError, setPlanError] = useState<string | null>(null);
   const [contextDraft, setContextDraft] = useState(mindContext ?? "");
   const [contextSaved, setContextSaved] = useState(false);
+  const [databaseRefreshing, setDatabaseRefreshing] = useState(true);
+  const [databaseVerified, setDatabaseVerified] = useState(false);
 
   const analyze = useAnalyzePsychology();
   const sendChat = useChatPsychology();
@@ -85,22 +167,73 @@ export default function Mind() {
     setContextDraft(mindContext ?? "");
   }, [mindContext]);
   useEffect(() => {
-    if (analysis) localStorage.setItem(ANALYSIS_KEY, JSON.stringify(analysis));
-  }, [analysis]);
+    for (const legacyKey of [ANALYSIS_KEY, ANALYSIS_SOURCE_KEY, PLAN_KEY, CHAT_KEY]) {
+      localStorage.removeItem(legacyKey);
+    }
+  }, []);
   useEffect(() => {
-    if (plan) localStorage.setItem(PLAN_KEY, JSON.stringify(plan));
-  }, [plan]);
+    let mounted = true;
+    async function verifyDatabaseFreshness() {
+      if (mounted) {
+        setDatabaseRefreshing(true);
+        setDatabaseVerified(false);
+      }
+      try {
+        await refreshUserState();
+        if (mounted) setDatabaseVerified(true);
+      } catch {
+        if (mounted) setDatabaseVerified(false);
+      } finally {
+        if (mounted) setDatabaseRefreshing(false);
+      }
+    }
+
+    void verifyDatabaseFreshness();
+    window.addEventListener("focus", verifyDatabaseFreshness);
+    return () => {
+      mounted = false;
+      window.removeEventListener("focus", verifyDatabaseFreshness);
+    };
+  }, []);
   useEffect(() => {
-    localStorage.setItem(CHAT_KEY, JSON.stringify(chat));
-  }, [chat]);
+    if (analysis) {
+      localStorage.setItem(userCacheKey(ANALYSIS_KEY, userId), JSON.stringify(analysis));
+    }
+  }, [analysis, userId]);
+  useEffect(() => {
+    if (plan) localStorage.setItem(userCacheKey(PLAN_KEY, userId), JSON.stringify(plan));
+  }, [plan, userId]);
+  useEffect(() => {
+    localStorage.setItem(userCacheKey(CHAT_KEY, userId), JSON.stringify(chat));
+  }, [chat, userId]);
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [chat, sendChat.isPending]);
 
   const hasGoals = goals.length > 0;
   const hasReflections = reflections.length > 0;
-  const canAnalyze = hasGoals || hasReflections || !!contextDraft.trim();
+  const hasAccomplishments = accomplishments.length > 0;
+  const canAnalyze = hasGoals || hasReflections || hasAccomplishments || !!contextDraft.trim();
   const contextDirty = (contextDraft.trim() || "") !== (mindContext ?? "");
+  const currentAnalysisSource = useMemo(
+    () =>
+      fingerprint({
+        tasks,
+        completions,
+        journal,
+        diary,
+        rules,
+        accomplishments,
+        mindContext: mindContext || undefined,
+      }),
+    [accomplishments, completions, diary, journal, mindContext, rules, tasks],
+  );
+  const analysisIsStale = Boolean(
+    analysis &&
+      (!databaseVerified ||
+        analysisSource !== currentAnalysisSource ||
+        analysis.source?.databaseUpdatedAt !== serverUpdatedAt),
+  );
 
   function saveContext() {
     setMindContext(contextDraft);
@@ -112,14 +245,29 @@ export default function Mind() {
     setError(null);
     if (contextDirty) setMindContext(contextDraft);
     try {
+      const latestAccomplishmentsResult = await refetchAccomplishments();
+      if (latestAccomplishmentsResult.error) throw latestAccomplishmentsResult.error;
+      const latestAccomplishments = latestAccomplishmentsResult.data?.accomplishments ?? [];
+      await ensureStateSaved();
+      const submittedSource = fingerprint({
+        tasks,
+        completions,
+        journal,
+        diary,
+        rules,
+        accomplishments: latestAccomplishments,
+        mindContext: contextDraft.trim() || undefined,
+      });
       const result = await analyze.mutateAsync({
         data: { goals, reflections, context: contextDraft.trim() || null },
       });
       setAnalysis(result);
+      setAnalysisSource(submittedSource);
+      localStorage.setItem(userCacheKey(ANALYSIS_SOURCE_KEY, userId), submittedSource);
       // The old plan was built from the previous read; drop it so it doesn't go stale.
       setPlan(null);
       setPlanError(null);
-      localStorage.removeItem(PLAN_KEY);
+      localStorage.removeItem(userCacheKey(PLAN_KEY, userId));
     } catch {
       setError("Could not build your profile right now. Try again in a moment.");
     }
@@ -187,7 +335,13 @@ export default function Mind() {
           variant={analysis ? "outline" : "default"}
           size="sm"
           onClick={runAnalysis}
-          disabled={!canAnalyze || analyze.isPending}
+          disabled={
+            !canAnalyze ||
+            analyze.isPending ||
+            databaseRefreshing ||
+            accomplishmentsLoading ||
+            accomplishmentsFetching
+          }
           className="shrink-0"
         >
           {analyze.isPending ? (
@@ -196,7 +350,8 @@ export default function Mind() {
             </>
           ) : analysis ? (
             <>
-              <RefreshCw className="size-4" /> Rebuild profile
+              <RefreshCw className="size-4" />{" "}
+              {analysisIsStale ? "Update with latest data" : "Rebuild profile"}
             </>
           ) : (
             <>
@@ -212,11 +367,20 @@ export default function Mind() {
         </div>
       )}
 
+      {analysisIsStale && (
+        <div className="rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 text-sm text-foreground">
+          {databaseVerified
+            ? "This profile is out of date because your saved workspace data has changed since it was generated."
+            : "The app has not yet verified this profile against the latest database record."}{" "}
+          Use <strong>Update with latest data</strong> to analyze the current database record.
+        </div>
+      )}
+
       {!canAnalyze && (
         <div className="rounded-xl border border-card-border bg-card p-8 text-center">
           <p className="text-muted-foreground">
-            Add a few goals or write a journal entry first. Once you have either, come back and I'll
-            tell you what they say about you.
+            Add a few goals, accomplishments, journal entries, or diary entries first. Once you have
+            something recorded, come back and I'll tell you what it says about you.
           </p>
         </div>
       )}
@@ -243,9 +407,24 @@ export default function Mind() {
           <section className="rounded-xl border border-card-border bg-card p-6">
             <h2 className="font-serif text-2xl text-foreground leading-snug">{analysis.headline}</h2>
             <p className="text-muted-foreground mt-3 leading-relaxed">{analysis.summary}</p>
-            <div className="text-[10px] uppercase tracking-widest text-muted-foreground mt-4">
-              Profiled {new Date(analysis.generatedAt).toLocaleDateString()}
+            <div className="mt-4 text-[10px] uppercase tracking-widest text-muted-foreground">
+              Profiled {new Date(analysis.generatedAt).toLocaleString()}
             </div>
+            {analysis.source && (
+              <div className="mt-3 rounded-md border border-border bg-muted/30 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+                <div className="font-medium text-foreground">Current database snapshot analyzed</div>
+                <div>
+                  {analysis.source.taskCount} tasks/goals · {analysis.source.completionCount} completions ·{" "}
+                  {analysis.source.journalCount} journal entries · {analysis.source.diaryCount} diary entries ·{" "}
+                  {analysis.source.accomplishmentCount} accomplishments · {analysis.source.ruleCount} rules
+                </div>
+                {analysis.source.databaseUpdatedAt && (
+                  <div>
+                    Database updated {new Date(analysis.source.databaseUpdatedAt).toLocaleString()}
+                  </div>
+                )}
+              </div>
+            )}
           </section>
 
           {analysis.traits.length > 0 && (
