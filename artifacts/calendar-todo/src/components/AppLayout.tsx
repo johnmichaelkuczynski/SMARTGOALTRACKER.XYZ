@@ -165,7 +165,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             </Link>
           )}
           <a
-            href="mailto:jmkuczynski@yahoo.com"
+            href="mailto:contact@zhisystems.ai"
             className="whitespace-nowrap border-b-2 border-transparent px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
           >
             Contact us

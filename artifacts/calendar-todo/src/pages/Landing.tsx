@@ -62,10 +62,10 @@ export function Landing() {
         <div className="max-w-5xl mx-auto px-6 py-6 text-sm text-muted-foreground flex flex-wrap items-center justify-between gap-2">
           <span>Goal Tracker — honest follow-through.</span>
           <a
-            href="mailto:zhi@zhicourses.org"
+            href="mailto:contact@zhisystems.ai"
             className="text-foreground hover:text-primary underline underline-offset-4"
           >
-            zhi@zhicourses.org
+            contact@zhisystems.ai
           </a>
         </div>
       </footer>
