@@ -6,3 +6,26 @@ id = "df22D-1nHtWXaZ_JJzNtG"
 uri = "file://BLUEPRINT.md"
 type = "text"
 title = "Goal Tracker — Complete File Tree Blueprint"
+logical_id = "19ea29ea-ef5a-4a1d-a676-941e2f530dcb"
+
+[[outputs]]
+id = "pHPUHy91-q3j0nj5kI0_D"
+uri = "file://attached_assets/generated_audio/smart_goal_tracker_voiceover.mp3"
+type = "audio"
+title = "smart goal tracker friendly voiceover"
+description = "Text-to-speech audio: You know that feeling when your goals are scattered across notes, calendars, and half-finished lists? This brings everything together in one calm workspace. Plan your day, break…"
+logical_id = "dadbde86-92c6-4131-8d44-cf5553d6f8d1"
+
+[[outputs]]
+id = "_2rWs3FvHFI930weOAN5J"
+uri = "file://exports/ZHI_Smart_Goal_Tracker_TikTok.mp4"
+type = "video"
+title = "ZHI Smart Goal Tracker — TikTok Promo"
+description = "TikTok-ready 9:16 MP4 using the uploaded screen recording, with original audio removed, natural voiceover, synchronized captions, ZHI branding, and no music."
+logical_id = "5972ac3b-a183-41a4-9b16-2a9e96c1f913"
+content_hash = "sha256:221b2a19e127e8cf71217e6caf73f92977787d19b93e075f2ec646c695842a9d"
+size = 2605559
+mtime_ms = 1788989623527
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:9ea926c8-3611-41d9-a9c4-758605c7ed93/5972ac3b-a183-41a4-9b16-2a9e96c1f913/865d6999-291a-4819-b7fa-6705465f309c"
+storage_version_token = "1788989633000317"
+content_type = "video/mp4"
