@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, ListTodo, ListChecks, Target, BarChart3, BookOpen, Brain, MessageCircle, Plus, FileText, Settings, Ban, DownloadCloud, Check, RefreshCw, CloudOff, Loader2, LogOut, FolderOpen, Sparkles, Scale, Trophy, Lightbulb } from "lucide-react";
+import { CalendarDays, ListTodo, ListChecks, Target, BarChart3, BookOpen, Brain, MessageCircle, Plus, FileText, Settings, Ban, DownloadCloud, Check, RefreshCw, CloudOff, Loader2, LogOut, FolderOpen, Sparkles, Scale, Trophy, Lightbulb, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -29,6 +29,7 @@ const NAV = [
   { href: "/commands", label: "Commands", icon: Ban },
   { href: "/upcoming", label: "Due by", icon: ListTodo },
   { href: "/goals", label: "Goals", icon: Target },
+  { href: "/billing", label: "Billing", icon: CreditCard, requiresAuth: true },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/journal", label: "Journal", icon: BookOpen },
   { href: "/diary", label: "Diary", icon: BookOpen },
@@ -254,6 +255,12 @@ function UserMenu() {
             <DropdownMenuItem onClick={() => setRestoreOpen(true)}>
               <DownloadCloud className="h-4 w-4" />
               Restore / back up data
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/billing">
+                <CreditCard className="h-4 w-4" />
+                Billing
+              </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => logout()}>

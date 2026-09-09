@@ -30,6 +30,7 @@ import Informed from "@/pages/Informed";
 import Legal from "@/pages/Legal";
 import Accomplishments from "@/pages/Accomplishments";
 import Tips from "@/pages/Tips";
+import Billing from "@/pages/Billing";
 import { SignInPage } from "@/pages/AuthPages";
 import { AppLayout } from "@/components/AppLayout";
 import {
@@ -111,6 +112,7 @@ function AppRoutes() {
         <Route path="/legal" component={Legal} />
         <Route path="/accomplishments" component={Accomplishments} />
         <Route path="/tips" component={Tips} />
+        <Route path="/billing" component={Billing} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>
