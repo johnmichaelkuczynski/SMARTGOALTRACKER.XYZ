@@ -6,3 +6,4 @@
 - [Tractatus memory system](tractatus-memory.md) — Tractatus Skeleton Fusion long-term memory for Informed LLM. Tables: tractatus_tiers, tractatus_archive. Owner module: artifacts/api-server/src/services/tractatusMemory.ts. Integrated into informed.ts. Feature flag defaults ON (TRACTATUS_MEMORY_ENABLED !== "false").
 - [Google OAuth credential aliases](google-oauth-credential-aliases.md) — Saved OAuth aliases are crossed; preserve the validated ID/secret precedence when changing production login.
 - [Trusted dev auth and screenshots](trusted-dev-auth-screenshots.md) — appPreview uses localhost, so exact-host owner auth fails there; verify through the dev-domain browser tester.
+- [pnpm workspace audit fixes](pnpm-workspace-audit-fixes.md) — `pnpm audit --fix` rewrites workspace YAML and adds overrides but requires a separate install to update the lockfile.
