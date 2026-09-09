@@ -23,6 +23,7 @@ import { periodLabel, keyToDate } from "@/lib/periods";
 import { useAuth } from "@/lib/useAuth";
 import { Button } from "@/components/ui/button";
 import { ImageOcrButton } from "@/components/ImageOcrButton";
+import { RichMessageContent } from "@/components/RichMessageContent";
 import { DocumentTextButton } from "@/components/DocumentTextButton";
 
 const ANALYSIS_KEY = "tally:psych:v1";
@@ -667,7 +668,11 @@ function MindForUser({ userId }: { userId: string }) {
                       : "bg-muted text-foreground"
                   }`}
                 >
-                  {m.content}
+                  {m.role === "assistant" ? (
+                    <RichMessageContent content={m.content} />
+                  ) : (
+                    m.content
+                  )}
                 </div>
               </div>
             ))}

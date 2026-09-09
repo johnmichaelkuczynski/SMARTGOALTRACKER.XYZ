@@ -10,6 +10,7 @@ import { buildAssistantContext } from "@/lib/assistantContext";
 import { Button } from "@/components/ui/button";
 import { ImageOcrButton } from "@/components/ImageOcrButton";
 import { DocumentTextButton } from "@/components/DocumentTextButton";
+import { RichMessageContent } from "@/components/RichMessageContent";
 
 const CHAT_KEY = "tally:assistant-chat:v1";
 const ANALYSIS_KEY = "tally:psych:v1";
@@ -141,7 +142,11 @@ export default function Assistant() {
                       : "bg-muted text-foreground"
                   }`}
                 >
-                  {m.content}
+                  {m.role === "assistant" ? (
+                    <RichMessageContent content={m.content} />
+                  ) : (
+                    m.content
+                  )}
                 </div>
               </div>
             ))

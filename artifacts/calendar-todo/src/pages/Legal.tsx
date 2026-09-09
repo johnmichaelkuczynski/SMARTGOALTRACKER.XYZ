@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
+import { RichMessageContent } from "@/components/RichMessageContent";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -155,50 +156,7 @@ function relativeDateLabel(iso: string): string {
 // ── Markdown renderer ─────────────────────────────────────────────────────────
 
 function MessageContent({ content }: { content: string }) {
-  const lines = content.split("\n");
-  const elements: React.ReactNode[] = [];
-  let i = 0;
-
-  function renderInline(text: string): React.ReactNode {
-    const parts = text.split(/(\*\*[^*]+\*\*)/g);
-    return parts.map((p, j) =>
-      p.startsWith("**") && p.endsWith("**")
-        ? <strong key={j}>{p.slice(2, -2)}</strong>
-        : p
-    );
-  }
-
-  while (i < lines.length) {
-    const line = lines[i];
-    if (line.trim() === "") { i++; continue; }
-    if (/^#{1,3}\s/.test(line)) {
-      const level = line.match(/^(#{1,3})/)?.[1].length ?? 1;
-      const text = line.replace(/^#{1,3}\s/, "");
-      const Tag = `h${level + 2}` as React.ElementType;
-      elements.push(<Tag key={i} className="font-semibold mt-3 mb-1">{renderInline(text)}</Tag>);
-      i++;
-    } else if (/^[-*]\s/.test(line)) {
-      const items: string[] = [];
-      while (i < lines.length && /^[-*]\s/.test(lines[i])) { items.push(lines[i].replace(/^[-*]\s/, "")); i++; }
-      elements.push(
-        <ul key={i} className="list-disc list-inside space-y-0.5 my-1">
-          {items.map((item, j) => <li key={j} className="text-sm leading-relaxed">{renderInline(item)}</li>)}
-        </ul>
-      );
-    } else if (/^\d+\.\s/.test(line)) {
-      const items: string[] = [];
-      while (i < lines.length && /^\d+\.\s/.test(lines[i])) { items.push(lines[i].replace(/^\d+\.\s/, "")); i++; }
-      elements.push(
-        <ol key={i} className="list-decimal list-inside space-y-0.5 my-1">
-          {items.map((item, j) => <li key={j} className="text-sm leading-relaxed">{renderInline(item)}</li>)}
-        </ol>
-      );
-    } else {
-      elements.push(<p key={i} className="text-sm leading-relaxed">{renderInline(line)}</p>);
-      i++;
-    }
-  }
-  return <div className="space-y-1">{elements}</div>;
+  return <RichMessageContent content={content} />;
 }
 
 // ── CopyButton ────────────────────────────────────────────────────────────────
