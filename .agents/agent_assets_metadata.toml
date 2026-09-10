@@ -57,3 +57,33 @@ mtime_ms = 1789032737783
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:9ea926c8-3611-41d9-a9c4-758605c7ed93/f5433d3a-74da-4616-9a1a-b5249e253f08/c5da23d9-19c4-4850-a681-c20a2cb17ff2"
 storage_version_token = "1789032752862742"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "DW20sJgrkE5HmeHuX1mCv"
+uri = "file://attached_assets/generated_audio/smart_goal_tracker_verified_male_voiceover.mp3"
+type = "audio"
+title = "smart goal tracker verified male voiceover"
+description = "Text-to-speech audio: You know that feeling when your goals are scattered across notes, calendars, and half-finished lists? This brings everything together in one calm workspace. Plan your day. Break…"
+logical_id = "d08e0590-94d5-48ee-a2cf-d92563bd4bc4"
+
+[[outputs]]
+id = "5qG6hHE7wJlwCMmyCQLSN"
+uri = "file://attached_assets/generated_audio/smart_goal_tracker_verified_male_voiceover_2.mp3"
+type = "audio"
+title = "smart goal tracker verified male voiceover"
+description = "Text-to-speech audio: You know that feeling when your goals are scattered across notes, calendars, and half-finished lists? This brings everything together in one calm workspace. Plan your day. Break…"
+logical_id = "75f3568c-d912-4a26-9b3c-39ef1c193afa"
+
+[[outputs]]
+id = "lOhBelario0oDTe4QzYIX"
+uri = "file://exports/ZHI_Smart_Goal_Tracker_16x9_Verified_Male_Voice.mp4"
+type = "video"
+title = "ZHI Smart Goal Tracker — Verified Male Voice"
+description = "16:9 full-frame app promo with a verified American male baritone narrator, synchronized captions, no original audio, and no music."
+logical_id = "76b00b3f-7189-49b3-96ba-7afa454a153d"
+content_hash = "sha256:df89128ee369e5df8137b2b7cd9620f0a668208e00e43792f4b1e15448bd6c85"
+size = 2198140
+mtime_ms = 1789033404968
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:9ea926c8-3611-41d9-a9c4-758605c7ed93/76b00b3f-7189-49b3-96ba-7afa454a153d/b1d1de31-82f7-46c0-ad12-28783b2045c4"
+storage_version_token = "1789033411236653"
+content_type = "video/mp4"
