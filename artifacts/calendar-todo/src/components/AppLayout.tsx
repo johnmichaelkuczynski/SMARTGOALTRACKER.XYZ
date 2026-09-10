@@ -131,6 +131,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <SaveIndicator />
           <GlobalSearchInput />
           <VoiceCapture />
+          {isAuthenticated && <HeaderPaymentButton />}
           <Button onClick={openCreate} size="sm" className="gap-2">
             <Plus className="h-4 w-4" /> Add
           </Button>
@@ -182,6 +183,76 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         defaults={editingTask ?? createDefaults}
       />
     </div>
+  );
+}
+
+function HeaderPaymentButton() {
+  const [, navigate] = useLocation();
+  const [active, setActive] = useState(false);
+  const [pending, setPending] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch(`${basePath}/api/billing/status`, {
+      credentials: "include",
+      cache: "no-store",
+    })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const status = (await response.json()) as { active?: boolean };
+        if (!cancelled) setActive(Boolean(status.active));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function handleClick() {
+    if (active) {
+      navigate("/billing");
+      return;
+    }
+
+    setPending(true);
+    try {
+      const response = await fetch(`${basePath}/api/billing/checkout`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ returnPath: `${basePath}/billing` }),
+      });
+      const body = (await response.json().catch(() => ({}))) as {
+        url?: string;
+        error?: string;
+      };
+      if (!response.ok || !body.url) {
+        throw new Error(body.error || "Could not open secure checkout");
+      }
+      window.location.assign(body.url);
+    } catch {
+      navigate("/billing");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="outline"
+      onClick={() => void handleClick()}
+      disabled={pending}
+      className="gap-2 border-primary/50 text-primary hover:bg-primary hover:text-primary-foreground"
+    >
+      {pending ? (
+        <Loader2 className="h-4 w-4 animate-spin" />
+      ) : (
+        <CreditCard className="h-4 w-4" />
+      )}
+      {active ? "Manage plan" : "Subscribe"}
+    </Button>
   );
 }
 
