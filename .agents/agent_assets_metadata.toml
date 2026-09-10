@@ -29,3 +29,17 @@ mtime_ms = 1788989623527
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:9ea926c8-3611-41d9-a9c4-758605c7ed93/5972ac3b-a183-41a4-9b16-2a9e96c1f913/865d6999-291a-4819-b7fa-6705465f309c"
 storage_version_token = "1788989633000317"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "QlwgQDs7lsSN3nGoEfm2G"
+uri = "file://exports/ZHI_Smart_Goal_Tracker_Landscape.mp4"
+type = "video"
+title = "ZHI Smart Goal Tracker — Landscape Promo"
+description = "Reframed to 16:9 at 1280×720 with the original app recording filling the frame, synchronized captions, voiceover, no original audio, and no music."
+logical_id = "200a9f3a-153e-41aa-874c-2883342c9c4b"
+content_hash = "sha256:e958ed3864474f950b6e61dfe39c7e0914512943fb5f1dc6c85673f32a861f23"
+size = 2288302
+mtime_ms = 1789031554165
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:9ea926c8-3611-41d9-a9c4-758605c7ed93/200a9f3a-153e-41aa-874c-2883342c9c4b/1803b4a0-f506-44ec-b9fc-91dd94d14166"
+storage_version_token = "1789031578472437"
+content_type = "video/mp4"
