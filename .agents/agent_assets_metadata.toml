@@ -43,3 +43,17 @@ mtime_ms = 1789031554165
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:9ea926c8-3611-41d9-a9c4-758605c7ed93/200a9f3a-153e-41aa-874c-2883342c9c4b/1803b4a0-f506-44ec-b9fc-91dd94d14166"
 storage_version_token = "1789031578472437"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "kkttfWP7a5CnkZd5OWAFI"
+uri = "file://exports/ZHI_Smart_Goal_Tracker_Landscape_Male_Voice.mp4"
+type = "video"
+title = "ZHI Smart Goal Tracker — Original Male Voice"
+description = "Corrected 16:9 landscape promo using the untouched original male voiceover, full-frame app recording, and retimed synchronized captions."
+logical_id = "f5433d3a-74da-4616-9a1a-b5249e253f08"
+content_hash = "sha256:3074df70273ca673c759515b8397de2adc5ede6ffc793594278e4a2808f41f3e"
+size = 2113974
+mtime_ms = 1789032737783
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:9ea926c8-3611-41d9-a9c4-758605c7ed93/f5433d3a-74da-4616-9a1a-b5249e253f08/c5da23d9-19c4-4850-a681-c20a2cb17ff2"
+storage_version_token = "1789032752862742"
+content_type = "video/mp4"

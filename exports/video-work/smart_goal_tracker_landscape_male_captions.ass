@@ -1,0 +1,24 @@
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 1280
+PlayResY: 720
+ScaledBorderAndShadow: yes
+WrapStyle: 2
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Caption,Arial,30,&H00FFFFFF,&H000000FF,&H0013141A,&HA0000000,-1,0,0,0,100,100,0,0,3,8,0,2,70,70,32,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:03.32,Caption,,0,0,0,,You know that feeling when\Nyour goals are scattered
+Dialogue: 0,0:00:03.32,0:00:05.54,Caption,,0,0,0,,across notes, calendars, and\Nhalf-finished lists?
+Dialogue: 0,0:00:05.54,0:00:08.49,Caption,,0,0,0,,This brings everything together\Nin one calm workspace.
+Dialogue: 0,0:00:08.49,0:00:12.18,Caption,,0,0,0,,Plan your day. Break big goals\Ninto clear next steps.
+Dialogue: 0,0:00:12.18,0:00:16.97,Caption,,0,0,0,,Check off progress, and keep notes,\Njournal entries, and your diary close by.
+Dialogue: 0,0:00:16.97,0:00:18.45,Caption,,0,0,0,,Search across everything instantly.
+Dialogue: 0,0:00:18.45,0:00:21.03,Caption,,0,0,0,,And when you want a\Nbigger-picture view,
+Dialogue: 0,0:00:21.03,0:00:23.62,Caption,,0,0,0,,the Mind section uses\Nyour real activity
+Dialogue: 0,0:00:23.62,0:00:26.57,Caption,,0,0,0,,to help you spot patterns\Nand move forward.
+Dialogue: 0,0:00:26.57,0:00:28.78,Caption,,0,0,0,,Less mental clutter.\NMore steady progress.
+Dialogue: 0,0:00:28.78,0:00:31.00,Caption,,0,0,0,,Your goals, finally\Nworking with you.
