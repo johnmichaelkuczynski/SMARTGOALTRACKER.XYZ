@@ -1,9 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { addDays, format, isValid, parseISO } from "date-fns";
-import { ChevronLeft, ChevronRight, Loader2, Sparkles } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, Plus, Sparkles, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { addDiaryMessage, ensureStateSaved, getDiaryEntry, setDiaryEntry, useStore } from "@/lib/storage";
+import {
+  addDiaryMessage,
+  createDiaryEntry,
+  deleteDiaryEntry,
+  ensureStateSaved,
+  getDiaryEntries,
+  setDiaryEntry,
+  useStore,
+} from "@/lib/storage";
 import type { DiaryEntry } from "@/lib/types";
 import { Switch } from "@/components/ui/switch";
 import { RichMessageContent } from "@/components/RichMessageContent";
@@ -22,7 +30,11 @@ function diaryDateLabel(value: string): string {
 export default function Diary() {
   const { diary = [] } = useStore();
   const [date, setDate] = useState(todayKey);
-  const [text, setText] = useState(() => getDiaryEntry(todayKey())?.text ?? "");
+  const initialEntry = getDiaryEntries(todayKey())[0];
+  const [entryId, setEntryId] = useState<string | null>(
+    initialEntry?.id ?? (initialEntry ? `legacy:${initialEntry.date}` : null),
+  );
+  const [text, setText] = useState(initialEntry?.text ?? "");
   const [justSaved, setJustSaved] = useState(false);
   const [interactive, setInteractive] = useState(false);
   const [answering, setAnswering] = useState(false);
@@ -30,7 +42,9 @@ export default function Diary() {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    setText(getDiaryEntry(date)?.text ?? "");
+    const latest = getDiaryEntries(date)[0];
+    setEntryId(latest?.id ?? (latest ? `legacy:${latest.date}` : null));
+    setText(latest?.text ?? "");
     setJustSaved(false);
   }, [date]);
 
@@ -42,7 +56,10 @@ export default function Diary() {
   );
 
   function commit(value: string) {
-    setDiaryEntry(date, value);
+    setDiaryEntry(date, value, entryId ?? undefined);
+    if (!entryId && value.trim()) {
+      setEntryId(getDiaryEntries(date)[0]?.id ?? null);
+    }
     setJustSaved(true);
   }
 
@@ -62,15 +79,37 @@ export default function Diary() {
     setDate(format(addDays(parseISO(date), days), "yyyy-MM-dd"));
   }
 
-  const currentEntry = diary.find((entry) => entry.date === date);
+  const sameDayEntries = diary
+    .filter((entry) => entry.date === date)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  const currentEntry = sameDayEntries.find(
+    (entry) => entry.id === entryId || (!entry.id && entryId === `legacy:${entry.date}`),
+  );
   const conversation = currentEntry?.conversation ?? [];
+
+  function newEntry() {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    const created = createDiaryEntry(date);
+    setEntryId(created.id ?? null);
+    setText("");
+    setJustSaved(true);
+    setError("");
+  }
+
+  function openEntry(entry: DiaryEntry) {
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    setEntryId(entry.id ?? `legacy:${entry.date}`);
+    setText(entry.text);
+    setJustSaved(false);
+    setError("");
+  }
 
   async function askLivingDiary() {
     const prompt = text.trim();
     const entryText = text.trim();
     if (!prompt || !entryText || answering) return;
     setError("");
-    addDiaryMessage(date, { role: "user", content: prompt });
+    addDiaryMessage(date, { role: "user", content: prompt }, entryId ?? undefined);
     setAnswering(true);
     try {
       await ensureStateSaved();
@@ -91,7 +130,7 @@ export default function Diary() {
       });
       const data = await response.json() as { reply?: string; error?: string };
       if (!response.ok || !data.reply) throw new Error(data.error || "No reply received.");
-      addDiaryMessage(date, { role: "assistant", content: data.reply });
+      addDiaryMessage(date, { role: "assistant", content: data.reply }, entryId ?? undefined);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The Living Diary could not answer.");
     } finally {
@@ -163,6 +202,35 @@ export default function Diary() {
           </Button>
         </div>
 
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-xs text-muted-foreground">
+            {sameDayEntries.length} {sameDayEntries.length === 1 ? "entry" : "entries"} for this day
+          </div>
+          <Button type="button" variant="outline" onClick={newEntry} className="gap-2">
+            <Plus className="h-4 w-4" />
+            New entry
+          </Button>
+        </div>
+
+        {sameDayEntries.length > 1 && (
+          <div className="mb-4 flex flex-wrap gap-2">
+            {sameDayEntries.map((entry, index) => {
+              const id = entry.id ?? `legacy:${entry.date}`;
+              return (
+                <Button
+                  key={id}
+                  type="button"
+                  size="sm"
+                  variant={id === entryId ? "default" : "outline"}
+                  onClick={() => openEntry(entry)}
+                >
+                  Entry {sameDayEntries.length - index}
+                </Button>
+              );
+            })}
+          </div>
+        )}
+
         <div className={interactive ? "rounded-xl border border-primary/25 bg-background p-4" : ""}>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <label htmlFor="diary-entry" className="block text-sm text-muted-foreground">
@@ -228,7 +296,30 @@ export default function Diary() {
         </div>
       </section>
 
-      <PastDiaryEntries entries={diary} onOpen={setDate} />
+      <PastDiaryEntries
+        entries={diary}
+        onOpen={(entry) => {
+          setDate(entry.date);
+          queueMicrotask(() => openEntry(entry));
+        }}
+        onDelete={(entry) => {
+          const confirmed = window.confirm(
+            `Delete this diary entry from ${diaryDateLabel(entry.date)}? Its Living Diary conversation will also be permanently deleted.`,
+          );
+          if (!confirmed) return;
+          deleteDiaryEntry(entry.date, entry.id ?? `legacy:${entry.date}`);
+          if (
+            entry.date === date &&
+            (entry.id === entryId || (!entry.id && entryId === `legacy:${entry.date}`))
+          ) {
+            const remaining = getDiaryEntries(date)[0];
+            setEntryId(remaining?.id ?? (remaining ? `legacy:${remaining.date}` : null));
+            setText(remaining?.text ?? "");
+            setJustSaved(false);
+            setError("");
+          }
+        }}
+      />
     </div>
   );
 }
@@ -236,12 +327,16 @@ export default function Diary() {
 function PastDiaryEntries({
   entries,
   onOpen,
+  onDelete,
 }: {
   entries: DiaryEntry[];
-  onOpen: (date: string) => void;
+  onOpen: (entry: DiaryEntry) => void;
+  onDelete: (entry: DiaryEntry) => void;
 }) {
   const sorted = useMemo(
-    () => [...entries].sort((a, b) => b.date.localeCompare(a.date)),
+    () => [...entries].sort(
+      (a, b) => b.date.localeCompare(a.date) || b.updatedAt.localeCompare(a.updatedAt),
+    ),
     [entries],
   );
 
@@ -254,19 +349,34 @@ function PastDiaryEntries({
       </h2>
       <div className="space-y-3">
         {sorted.map((entry) => (
-          <button
-            key={entry.date}
-            type="button"
-            onClick={() => onOpen(entry.date)}
-            className="block w-full rounded-xl border border-card-border bg-card p-4 text-left hover-elevate"
+          <div
+            key={entry.id ?? `legacy:${entry.date}`}
+            className="group relative rounded-xl border border-card-border bg-card hover-elevate"
           >
-            <div className="font-medium text-foreground">
-              {diaryDateLabel(entry.date)}
-            </div>
-            <p className="mt-1 line-clamp-3 text-sm leading-relaxed text-muted-foreground">
-              {entry.text}
-            </p>
-          </button>
+            <button
+              type="button"
+              onClick={() => onOpen(entry)}
+              className="block w-full p-4 pr-14 text-left"
+            >
+              <div className="font-medium text-foreground">
+                {diaryDateLabel(entry.date)}
+              </div>
+              <p className="mt-1 line-clamp-3 text-sm leading-relaxed text-muted-foreground">
+                {entry.text || "Empty entry"}
+              </p>
+            </button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => onDelete(entry)}
+              className="absolute right-3 top-3 h-8 w-8 text-muted-foreground hover:text-destructive"
+              aria-label={`Delete diary entry from ${diaryDateLabel(entry.date)}`}
+              title="Delete entry"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
         ))}
       </div>
     </section>

@@ -77,9 +77,11 @@ export interface JournalEntry {
 }
 
 export interface DiaryEntry {
+  id?: string;
   /** Local calendar date in yyyy-MM-dd format. */
   date: string;
   text: string;
+  createdAt?: string;
   updatedAt: string;
   conversation?: DiaryMessage[];
 }

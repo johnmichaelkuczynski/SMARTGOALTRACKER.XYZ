@@ -470,26 +470,65 @@ export function deleteJournalEntry(period: JournalPeriod, periodKey: string) {
   persist();
 }
 
-export function getDiaryEntry(date: string): DiaryEntry | undefined {
-  return (state.diary ?? []).find((entry) => entry.date === date);
+export function getDiaryEntries(date: string): DiaryEntry[] {
+  return (state.diary ?? [])
+    .filter((entry) => entry.date === date)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+export function getDiaryEntry(date: string, entryId?: string): DiaryEntry | undefined {
+  const entries = getDiaryEntries(date);
+  return entryId
+    ? entries.find((entry) => entry.id === entryId || (!entry.id && entryId === `legacy:${entry.date}`))
+    : entries[0];
+}
+
+export function createDiaryEntry(date: string): DiaryEntry {
+  const now = new Date().toISOString();
+  const entry: DiaryEntry = { id: uid(), date, text: "", createdAt: now, updatedAt: now };
+  state = { ...state, diary: [...(state.diary ?? []), entry] };
+  persist();
+  return entry;
+}
+
+export function deleteDiaryEntry(date: string, entryId?: string) {
+  const existing = getDiaryEntry(date, entryId);
+  if (!existing) return;
+  state = {
+    ...state,
+    diary: (state.diary ?? []).filter((entry) => entry !== existing),
+  };
+  persist();
 }
 
 /** Upsert one diary entry for a calendar day. Empty text removes the entry. */
-export function setDiaryEntry(date: string, text: string) {
+export function setDiaryEntry(date: string, text: string, entryId?: string) {
   const trimmed = text.trim();
-  const existing = getDiaryEntry(date);
-  const rest = (state.diary ?? []).filter((entry) => entry.date !== date);
+  const existing = getDiaryEntry(date, entryId);
+  const targetId = existing?.id ?? entryId ?? uid();
+  const rest = (state.diary ?? []).filter((entry) => entry !== existing);
   state = {
     ...state,
     diary: trimmed
-      ? [...rest, { ...existing, date, text: trimmed, updatedAt: new Date().toISOString() }]
+      ? [...rest, {
+          ...existing,
+          id: targetId,
+          date,
+          text: trimmed,
+          createdAt: existing?.createdAt ?? new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }]
       : rest,
   };
   persist();
 }
 
-export function addDiaryMessage(date: string, message: Omit<DiaryMessage, "id" | "createdAt">) {
-  const existing = getDiaryEntry(date);
+export function addDiaryMessage(
+  date: string,
+  message: Omit<DiaryMessage, "id" | "createdAt">,
+  entryId?: string,
+) {
+  const existing = getDiaryEntry(date, entryId);
   if (!existing) return;
   const next: DiaryEntry = {
     ...existing,
