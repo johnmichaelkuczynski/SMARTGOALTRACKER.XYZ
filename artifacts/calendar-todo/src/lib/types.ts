@@ -81,6 +81,14 @@ export interface DiaryEntry {
   date: string;
   text: string;
   updatedAt: string;
+  conversation?: DiaryMessage[];
+}
+
+export interface DiaryMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  createdAt: string;
 }
 
 export interface StoreState {

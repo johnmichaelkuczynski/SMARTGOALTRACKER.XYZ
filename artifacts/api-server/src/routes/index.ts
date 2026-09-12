@@ -15,6 +15,7 @@ import accomplishmentsRouter from "./accomplishments";
 import tipsRouter from "./tips";
 import visitorsRouter from "./visitors";
 import billingRouter from "./billing";
+import diaryRouter from "./diary";
 import { requireAuth } from "../middlewares/requireAuth";
 
 const router: IRouter = Router();
@@ -40,5 +41,6 @@ router.use(legalRouter);
 router.use(accomplishmentsRouter);
 router.use(tipsRouter);
 router.use(billingRouter);
+router.use(diaryRouter);
 
 export default router;

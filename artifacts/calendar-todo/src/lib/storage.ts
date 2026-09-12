@@ -7,6 +7,7 @@ import type {
   Completion,
   CompletionStatus,
   DiaryEntry,
+  DiaryMessage,
   JournalEntry,
   JournalPeriod,
   Rule,
@@ -476,12 +477,31 @@ export function getDiaryEntry(date: string): DiaryEntry | undefined {
 /** Upsert one diary entry for a calendar day. Empty text removes the entry. */
 export function setDiaryEntry(date: string, text: string) {
   const trimmed = text.trim();
+  const existing = getDiaryEntry(date);
   const rest = (state.diary ?? []).filter((entry) => entry.date !== date);
   state = {
     ...state,
     diary: trimmed
-      ? [...rest, { date, text: trimmed, updatedAt: new Date().toISOString() }]
+      ? [...rest, { ...existing, date, text: trimmed, updatedAt: new Date().toISOString() }]
       : rest,
+  };
+  persist();
+}
+
+export function addDiaryMessage(date: string, message: Omit<DiaryMessage, "id" | "createdAt">) {
+  const existing = getDiaryEntry(date);
+  if (!existing) return;
+  const next: DiaryEntry = {
+    ...existing,
+    conversation: [
+      ...(existing.conversation ?? []),
+      { ...message, id: uid(), createdAt: new Date().toISOString() },
+    ],
+    updatedAt: new Date().toISOString(),
+  };
+  state = {
+    ...state,
+    diary: [...(state.diary ?? []).filter((entry) => entry.date !== date), next],
   };
   persist();
 }

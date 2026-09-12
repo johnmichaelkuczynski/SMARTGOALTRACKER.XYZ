@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { addDays, format, isValid, parseISO } from "date-fns";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { getDiaryEntry, setDiaryEntry, useStore } from "@/lib/storage";
+import { addDiaryMessage, ensureStateSaved, getDiaryEntry, setDiaryEntry, useStore } from "@/lib/storage";
 import type { DiaryEntry } from "@/lib/types";
+import { Switch } from "@/components/ui/switch";
+import { RichMessageContent } from "@/components/RichMessageContent";
 
 const todayKey = () => format(new Date(), "yyyy-MM-dd");
 
@@ -22,6 +24,10 @@ export default function Diary() {
   const [date, setDate] = useState(todayKey);
   const [text, setText] = useState(() => getDiaryEntry(todayKey())?.text ?? "");
   const [justSaved, setJustSaved] = useState(false);
+  const [interactive, setInteractive] = useState(false);
+  const [question, setQuestion] = useState("");
+  const [answering, setAnswering] = useState(false);
+  const [error, setError] = useState("");
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -57,14 +63,62 @@ export default function Diary() {
     setDate(format(addDays(parseISO(date), days), "yyyy-MM-dd"));
   }
 
+  const currentEntry = diary.find((entry) => entry.date === date);
+  const conversation = currentEntry?.conversation ?? [];
+
+  async function askLivingDiary(event: React.FormEvent) {
+    event.preventDefault();
+    const prompt = question.trim();
+    const entryText = text.trim();
+    if (!prompt || !entryText || answering) return;
+    setError("");
+    setQuestion("");
+    addDiaryMessage(date, { role: "user", content: prompt });
+    setAnswering(true);
+    try {
+      await ensureStateSaved();
+      const latestConversation = [
+        ...conversation,
+        { role: "user" as const, content: prompt },
+      ];
+      const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+      const response = await fetch(`${basePath}/api/diary/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          date,
+          entry: entryText,
+          messages: latestConversation.map(({ role, content }) => ({ role, content })),
+        }),
+      });
+      const data = await response.json() as { reply?: string; error?: string };
+      if (!response.ok || !data.reply) throw new Error(data.error || "No reply received.");
+      addDiaryMessage(date, { role: "assistant", content: data.reply });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "The Living Diary could not answer.");
+    } finally {
+      setAnswering(false);
+    }
+  }
+
   return (
     <div className="space-y-10">
-      <header>
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
         <div className="text-xs uppercase tracking-widest text-muted-foreground">Diary</div>
         <h1 className="font-serif text-3xl text-foreground">Your day, in your own words</h1>
         <p className="mt-1 text-muted-foreground">
           Choose any date and write a private diary entry for that day.
         </p>
+        </div>
+        <label className="flex items-center gap-3 rounded-lg border border-card-border bg-card px-4 py-3">
+          <div>
+            <div className="text-sm font-medium text-foreground">Interactive Diary</div>
+            <div className="text-xs text-muted-foreground">Receive informed responses</div>
+          </div>
+          <Switch checked={interactive} onCheckedChange={setInteractive} aria-label="Make Diary interactive" />
+        </label>
       </header>
 
       <section className="rounded-xl border border-card-border bg-card p-6">
@@ -127,6 +181,47 @@ export default function Diary() {
         <div className="mt-2 h-4 text-[11px] text-muted-foreground">
           {justSaved ? "Saved." : "Saves automatically."}
         </div>
+        {interactive && (
+          <div className="mt-6 border-t border-border pt-5">
+            <div className="mb-3">
+              <h2 className="font-serif text-xl text-foreground">Living Diary</h2>
+              <p className="text-xs text-muted-foreground">
+                Ask about this entry. The answer uses your current authenticated app data.
+              </p>
+            </div>
+            {conversation.length > 0 && (
+              <div className="mb-4 space-y-3">
+                {conversation.map((message) => (
+                  <div
+                    key={message.id}
+                    className={`rounded-lg px-4 py-3 text-sm ${
+                      message.role === "user"
+                        ? "ml-8 bg-primary text-primary-foreground"
+                        : "mr-8 border border-card-border bg-background"
+                    }`}
+                  >
+                    {message.role === "assistant"
+                      ? <RichMessageContent content={message.content} />
+                      : message.content}
+                  </div>
+                ))}
+              </div>
+            )}
+            <form onSubmit={askLivingDiary} className="flex items-end gap-2">
+              <Textarea
+                value={question}
+                onChange={(event) => setQuestion(event.target.value)}
+                placeholder="Ask your diary a question…"
+                rows={2}
+                className="min-h-[72px] resize-y"
+              />
+              <Button type="submit" size="icon" disabled={!question.trim() || !text.trim() || answering} aria-label="Ask Living Diary">
+                {answering ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              </Button>
+            </form>
+            {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
+          </div>
+        )}
       </section>
 
       <PastDiaryEntries entries={diary} onOpen={setDate} />
