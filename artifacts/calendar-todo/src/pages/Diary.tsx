@@ -87,6 +87,14 @@ export default function Diary() {
   );
   const conversation = currentEntry?.conversation ?? [];
 
+  useEffect(() => {
+    if (interactive && conversation.length > 0) {
+      setText("");
+    } else if (!interactive) {
+      setText(currentEntry?.text ?? "");
+    }
+  }, [interactive, entryId]);
+
   function newEntry() {
     if (saveTimer.current) clearTimeout(saveTimer.current);
     const created = createDiaryEntry(date);
@@ -106,10 +114,16 @@ export default function Diary() {
 
   async function askLivingDiary() {
     const prompt = text.trim();
-    const entryText = text.trim();
-    if (!prompt || !entryText || answering) return;
+    if (!prompt || answering) return;
     setError("");
+    const previousText = currentEntry?.text.trim() ?? "";
+    const entryText =
+      conversation.length === 0 && previousText === prompt
+        ? previousText
+        : [previousText, prompt].filter(Boolean).join("\n\n");
+    setDiaryEntry(date, entryText, entryId ?? undefined);
     addDiaryMessage(date, { role: "user", content: prompt }, entryId ?? undefined);
+    setText("");
     setAnswering(true);
     try {
       await ensureStateSaved();
@@ -231,67 +245,104 @@ export default function Diary() {
           </div>
         )}
 
-        <div className={interactive ? "rounded-xl border border-primary/25 bg-background p-4" : ""}>
+        <div className={interactive ? "rounded-xl border border-primary/25 bg-background" : ""}>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <label htmlFor="diary-entry" className="block text-sm text-muted-foreground">
+            <label htmlFor="diary-entry" className={`block text-sm text-muted-foreground ${interactive ? "px-4 pt-4" : ""}`}>
               Diary entry for {diaryDateLabel(date)}
             </label>
             {interactive && (
-              <span className="text-[11px] text-primary">
+              <span className="px-4 pt-4 text-[11px] text-primary">
                 Living Diary is listening
               </span>
             )}
           </div>
-          <Textarea
-            id="diary-entry"
-            value={text}
-            onChange={(event) => updateText(event.target.value)}
-            onBlur={finishEditing}
-            placeholder={
-              interactive
-                ? "Write naturally here. Include a question whenever you want the Living Diary to respond."
-                : "Write about what happened, what you noticed, how you felt, or anything you want to remember."
-            }
-            rows={12}
-            className="min-h-[280px] resize-y text-base leading-relaxed"
-          />
-          <div className="mt-2 flex min-h-9 items-center justify-between gap-3">
-            <span className="text-[11px] text-muted-foreground">
-              {justSaved ? "Saved." : "Saves automatically."}
-            </span>
-            {interactive && (
-              <Button
-                type="button"
-                onClick={askLivingDiary}
-                disabled={!text.trim() || answering}
-                className="gap-2"
-              >
-                {answering
-                  ? <Loader2 className="h-4 w-4 animate-spin" />
-                  : <Sparkles className="h-4 w-4" />}
-                {answering ? "Thinking…" : "Ask Living Diary"}
-              </Button>
-            )}
-          </div>
-          {interactive && (
-            <>
-            {conversation.length > 0 && (
-              <div className="mt-4 space-y-3 border-t border-border pt-4">
-                {conversation.filter((message) => message.role === "assistant").map((message) => (
+          {interactive ? (
+            <div className="flex min-h-[360px] flex-col">
+              <div className="flex-1 space-y-4 overflow-y-auto px-4 py-3">
+                {conversation.length === 0 && currentEntry?.text && (
+                  <div className="ml-auto max-w-[85%] rounded-xl bg-primary px-4 py-3 text-sm text-primary-foreground">
+                    {currentEntry.text}
+                  </div>
+                )}
+                {conversation.map((message) => (
                   <div
                     key={message.id}
-                    className="rounded-lg border border-card-border bg-card px-4 py-3 text-sm"
+                    className={`max-w-[85%] rounded-xl px-4 py-3 text-sm ${
+                      message.role === "user"
+                        ? "ml-auto bg-primary text-primary-foreground"
+                        : "mr-auto border border-card-border bg-card"
+                    }`}
                   >
-                    <div className="mb-2 text-[10px] uppercase tracking-widest text-primary">
-                      Living Diary
-                    </div>
-                    <RichMessageContent content={message.content} />
+                    {message.role === "assistant" ? (
+                      <>
+                        <div className="mb-2 text-[10px] uppercase tracking-widest text-primary">
+                          Living Diary
+                        </div>
+                        <RichMessageContent content={message.content} />
+                      </>
+                    ) : (
+                      message.content
+                    )}
                   </div>
                 ))}
+                {answering && (
+                  <div className="mr-auto flex items-center gap-2 rounded-xl border border-card-border bg-card px-4 py-3 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Living Diary is thinking…
+                  </div>
+                )}
               </div>
-            )}
-            {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
+              <div className="border-t border-border p-3">
+                <Textarea
+                  id="diary-entry"
+                  value={text}
+                  onChange={(event) => setText(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      void askLivingDiary();
+                    }
+                  }}
+                  placeholder="Write to your Living Diary…"
+                  rows={3}
+                  className="min-h-[84px] resize-y border-0 bg-transparent text-base leading-relaxed shadow-none focus-visible:ring-0"
+                />
+                <div className="mt-2 flex items-center justify-between gap-3">
+                  <span className="text-[11px] text-muted-foreground">
+                    Enter to send · Shift+Enter for a new line
+                  </span>
+                  <Button
+                    type="button"
+                    onClick={askLivingDiary}
+                    disabled={!text.trim() || answering}
+                    className="gap-2"
+                  >
+                    {answering
+                      ? <Loader2 className="h-4 w-4 animate-spin" />
+                      : <Sparkles className="h-4 w-4" />}
+                    {answering ? "Thinking…" : "Send"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              <Textarea
+                id="diary-entry"
+                value={text}
+                onChange={(event) => updateText(event.target.value)}
+                onBlur={finishEditing}
+                placeholder="Write about what happened, what you noticed, how you felt, or anything you want to remember."
+                rows={12}
+                className="min-h-[280px] resize-y text-base leading-relaxed"
+              />
+              <div className="mt-2 min-h-4 text-[11px] text-muted-foreground">
+                {justSaved ? "Saved." : "Saves automatically."}
+              </div>
             </>
+          )}
+          {interactive && error && (
+            <div className="border-t border-border px-4 py-3 text-sm text-destructive">{error}</div>
           )}
         </div>
       </section>
