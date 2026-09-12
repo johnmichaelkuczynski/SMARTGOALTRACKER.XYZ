@@ -36,7 +36,7 @@ export default function Diary() {
   );
   const [text, setText] = useState(initialEntry?.text ?? "");
   const [justSaved, setJustSaved] = useState(false);
-  const [interactive, setInteractive] = useState(false);
+  const [interactive, setInteractive] = useState(true);
   const [answering, setAnswering] = useState(false);
   const [error, setError] = useState("");
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);

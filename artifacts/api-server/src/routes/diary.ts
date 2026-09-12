@@ -97,10 +97,11 @@ router.post("/diary/chat", async (req, res): Promise<void> => {
 
     const completion = await openai.chat.completions.create({
       model: MODEL,
+      max_completion_tokens: 220,
       messages: [
         {
           role: "system",
-          content: `You are the user's Living Diary: perceptive, conversational, honest, and informed by their authenticated Goal Tracker database. Respond to the question or reflection in the current diary entry. Use relevant stored tasks, goals, completion history, journal and diary entries, accomplishments, rules, personal context, and documents. Distinguish evidence from inference. Never invent facts. Do not diagnose. If the stored evidence is insufficient, say so. Avoid canned therapy language and rigid analytical templates. Usually answer in a few thoughtful paragraphs, with concrete observations and useful next actions when appropriate.`,
+          content: `You are the user's Living Diary: perceptive, conversational, honest, and informed by their authenticated Goal Tracker database. Respond to the question or reflection in the current diary entry. Use relevant stored tasks, goals, completion history, journal and diary entries, accomplishments, rules, personal context, and documents. Distinguish evidence from inference. Never invent facts. Do not diagnose. If the stored evidence is insufficient, say so. Avoid canned therapy language and rigid analytical templates. Answer in exactly one concise paragraph of no more than 120 words. Do not use headings, lists, or separate paragraphs.`,
         },
         {
           role: "system",
@@ -117,7 +118,10 @@ router.post("/diary/chat", async (req, res): Promise<void> => {
       ],
     });
 
-    const reply = completion.choices[0]?.message?.content?.trim();
+    const rawReply = completion.choices[0]?.message?.content?.trim();
+    const reply = rawReply
+      ? rawReply.replace(/\s*\n+\s*/g, " ").replace(/\s{2,}/g, " ").trim()
+      : "";
     if (!reply) {
       res.status(502).json({ error: "The Living Diary returned no answer." });
       return;
