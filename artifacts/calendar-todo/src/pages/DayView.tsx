@@ -71,7 +71,14 @@ export default function DayView() {
   const completionFor = (taskId: string) =>
     completions.find((c) => c.taskId === taskId && c.date === dateStr);
 
-  const todo = dayTasks.filter((t) => !completionFor(t.id));
+  const todo = dayTasks
+    .filter((t) => !completionFor(t.id))
+    .sort((a, b) => {
+      const createdOrder = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      return Number.isNaN(createdOrder) || createdOrder === 0
+        ? b.id.localeCompare(a.id)
+        : createdOrder;
+    });
   const done = dayTasks.filter((t) => completionFor(t.id));
 
   const credit = done.reduce(
@@ -174,42 +181,6 @@ export default function DayView() {
           </div>
         </header>
 
-        {isViewingToday && overdue.length > 0 && (
-          <div className="mb-6 rounded-xl border border-amber-500/40 bg-amber-400/[0.06] p-4">
-            <button
-              onClick={() => setShowOverdue((v) => !v)}
-              className="flex items-center justify-between w-full"
-            >
-              <div className="flex items-center gap-2">
-                <CalendarClock className="h-4 w-4 text-amber-700 dark:text-amber-400" />
-                <h3 className="text-xs uppercase tracking-widest text-amber-800 dark:text-amber-300">
-                  Overdue · carried over
-                </h3>
-                <span className="font-mono text-xs text-amber-700/80 dark:text-amber-400/80">
-                  {overdue.length}
-                </span>
-              </div>
-              <ChevronDown
-                className={`h-4 w-4 text-amber-700/70 transition-transform ${
-                  showOverdue ? "" : "-rotate-90"
-                }`}
-              />
-            </button>
-            <p className="text-[11px] text-amber-800/70 dark:text-amber-300/70 mt-1">
-              Unfinished tasks from earlier days. Check one off to clear it, or open it to reschedule or delete.
-            </p>
-            {showOverdue && (
-              <div className="mt-3 space-y-2 max-h-[360px] overflow-y-auto pr-1">
-                <AnimatePresence mode="popLayout">
-                  {overdue.map((t) => (
-                    <TaskRow key={t.id} task={t} date={t.date} showDate />
-                  ))}
-                </AnimatePresence>
-              </div>
-            )}
-          </div>
-        )}
-
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <Column title="To do" count={todo.length}>
             <AnimatePresence mode="popLayout">
@@ -233,9 +204,74 @@ export default function DayView() {
               )}
             </AnimatePresence>
           </Column>
+          <OverdueRail
+            overdue={overdue}
+            visible={isViewingToday}
+            expanded={showOverdue}
+            onToggle={() => setShowOverdue((v) => !v)}
+          />
+        </div>
+        <div className="mt-6">
           <GoalRail goals={goals} />
         </div>
       </section>
+    </div>
+  );
+}
+
+function OverdueRail({
+  overdue,
+  visible,
+  expanded,
+  onToggle,
+}: {
+  overdue: Task[];
+  visible: boolean;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div className="rounded-xl border border-amber-500/40 bg-amber-400/[0.06] p-4 min-h-[300px]">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="flex items-center justify-between w-full"
+        disabled={!visible || overdue.length === 0}
+      >
+        <div className="flex items-center gap-2">
+          <CalendarClock className="h-4 w-4 text-amber-700 dark:text-amber-400" />
+          <h3 className="text-xs uppercase tracking-widest text-amber-800 dark:text-amber-300">
+            Overdue · carried over
+          </h3>
+          <span className="font-mono text-xs text-amber-700/80 dark:text-amber-400/80">
+            {visible ? overdue.length : 0}
+          </span>
+        </div>
+        {visible && overdue.length > 0 && (
+          <ChevronDown
+            className={`h-4 w-4 text-amber-700/70 transition-transform ${
+              expanded ? "" : "-rotate-90"
+            }`}
+          />
+        )}
+      </button>
+      <p className="text-[11px] text-amber-800/70 dark:text-amber-300/70 mt-1">
+        {visible
+          ? "Unfinished tasks from earlier days. Check one off to clear it, or open it to reschedule or delete."
+          : "Carried-over tasks appear here when viewing Today."}
+      </p>
+      {visible && overdue.length === 0 && (
+        <EmptyMsg>No overdue tasks.</EmptyMsg>
+      )}
+      {visible && expanded && overdue.length > 0 && (
+        <div className="mt-3 space-y-2 max-h-[720px] overflow-y-auto pr-1">
+          <AnimatePresence mode="popLayout">
+            {overdue.map((t) => (
+              <TaskRow key={t.id} task={t} date={t.date} showDate />
+            ))}
+          </AnimatePresence>
+        </div>
+      )}
     </div>
   );
 }
