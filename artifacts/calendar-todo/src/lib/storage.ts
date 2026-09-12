@@ -540,7 +540,7 @@ export function addDiaryMessage(
   };
   state = {
     ...state,
-    diary: [...(state.diary ?? []).filter((entry) => entry.date !== date), next],
+    diary: [...(state.diary ?? []).filter((entry) => entry !== existing), next],
   };
   persist();
 }
