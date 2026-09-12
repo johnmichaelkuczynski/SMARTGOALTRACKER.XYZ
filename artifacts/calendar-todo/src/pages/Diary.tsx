@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { addDays, format, isValid, parseISO } from "date-fns";
-import { ChevronLeft, ChevronRight, Loader2, Send } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { addDiaryMessage, ensureStateSaved, getDiaryEntry, setDiaryEntry, useStore } from "@/lib/storage";
@@ -25,7 +25,6 @@ export default function Diary() {
   const [text, setText] = useState(() => getDiaryEntry(todayKey())?.text ?? "");
   const [justSaved, setJustSaved] = useState(false);
   const [interactive, setInteractive] = useState(false);
-  const [question, setQuestion] = useState("");
   const [answering, setAnswering] = useState(false);
   const [error, setError] = useState("");
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -66,13 +65,11 @@ export default function Diary() {
   const currentEntry = diary.find((entry) => entry.date === date);
   const conversation = currentEntry?.conversation ?? [];
 
-  async function askLivingDiary(event: React.FormEvent) {
-    event.preventDefault();
-    const prompt = question.trim();
+  async function askLivingDiary() {
+    const prompt = text.trim();
     const entryText = text.trim();
     if (!prompt || !entryText || answering) return;
     setError("");
-    setQuestion("");
     addDiaryMessage(date, { role: "user", content: prompt });
     setAnswering(true);
     try {
@@ -166,62 +163,69 @@ export default function Diary() {
           </Button>
         </div>
 
-        <label htmlFor="diary-entry" className="mb-2 block text-sm text-muted-foreground">
-          Diary entry for {diaryDateLabel(date)}
-        </label>
-        <Textarea
-          id="diary-entry"
-          value={text}
-          onChange={(event) => updateText(event.target.value)}
-          onBlur={finishEditing}
-          placeholder="Write about what happened, what you noticed, how you felt, or anything you want to remember."
-          rows={12}
-          className="min-h-[280px] resize-y text-base leading-relaxed"
-        />
-        <div className="mt-2 h-4 text-[11px] text-muted-foreground">
-          {justSaved ? "Saved." : "Saves automatically."}
-        </div>
-        {interactive && (
-          <div className="mt-6 border-t border-border pt-5">
-            <div className="mb-3">
-              <h2 className="font-serif text-xl text-foreground">Living Diary</h2>
-              <p className="text-xs text-muted-foreground">
-                Ask about this entry. The answer uses your current authenticated app data.
-              </p>
-            </div>
+        <div className={interactive ? "rounded-xl border border-primary/25 bg-background p-4" : ""}>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <label htmlFor="diary-entry" className="block text-sm text-muted-foreground">
+              Diary entry for {diaryDateLabel(date)}
+            </label>
+            {interactive && (
+              <span className="text-[11px] text-primary">
+                Living Diary is listening
+              </span>
+            )}
+          </div>
+          <Textarea
+            id="diary-entry"
+            value={text}
+            onChange={(event) => updateText(event.target.value)}
+            onBlur={finishEditing}
+            placeholder={
+              interactive
+                ? "Write naturally here. Include a question whenever you want the Living Diary to respond."
+                : "Write about what happened, what you noticed, how you felt, or anything you want to remember."
+            }
+            rows={12}
+            className="min-h-[280px] resize-y text-base leading-relaxed"
+          />
+          <div className="mt-2 flex min-h-9 items-center justify-between gap-3">
+            <span className="text-[11px] text-muted-foreground">
+              {justSaved ? "Saved." : "Saves automatically."}
+            </span>
+            {interactive && (
+              <Button
+                type="button"
+                onClick={askLivingDiary}
+                disabled={!text.trim() || answering}
+                className="gap-2"
+              >
+                {answering
+                  ? <Loader2 className="h-4 w-4 animate-spin" />
+                  : <Sparkles className="h-4 w-4" />}
+                {answering ? "Thinking…" : "Ask Living Diary"}
+              </Button>
+            )}
+          </div>
+          {interactive && (
+            <>
             {conversation.length > 0 && (
-              <div className="mb-4 space-y-3">
-                {conversation.map((message) => (
+              <div className="mt-4 space-y-3 border-t border-border pt-4">
+                {conversation.filter((message) => message.role === "assistant").map((message) => (
                   <div
                     key={message.id}
-                    className={`rounded-lg px-4 py-3 text-sm ${
-                      message.role === "user"
-                        ? "ml-8 bg-primary text-primary-foreground"
-                        : "mr-8 border border-card-border bg-background"
-                    }`}
+                    className="rounded-lg border border-card-border bg-card px-4 py-3 text-sm"
                   >
-                    {message.role === "assistant"
-                      ? <RichMessageContent content={message.content} />
-                      : message.content}
+                    <div className="mb-2 text-[10px] uppercase tracking-widest text-primary">
+                      Living Diary
+                    </div>
+                    <RichMessageContent content={message.content} />
                   </div>
                 ))}
               </div>
             )}
-            <form onSubmit={askLivingDiary} className="flex items-end gap-2">
-              <Textarea
-                value={question}
-                onChange={(event) => setQuestion(event.target.value)}
-                placeholder="Ask your diary a question…"
-                rows={2}
-                className="min-h-[72px] resize-y"
-              />
-              <Button type="submit" size="icon" disabled={!question.trim() || !text.trim() || answering} aria-label="Ask Living Diary">
-                {answering ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              </Button>
-            </form>
             {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
-          </div>
-        )}
+            </>
+          )}
+        </div>
       </section>
 
       <PastDiaryEntries entries={diary} onOpen={setDate} />
