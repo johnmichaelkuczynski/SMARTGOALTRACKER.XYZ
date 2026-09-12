@@ -7,3 +7,4 @@
 - [Google OAuth credential aliases](google-oauth-credential-aliases.md) — Saved OAuth aliases are crossed; preserve the validated ID/secret precedence when changing production login.
 - [Trusted dev auth and screenshots](trusted-dev-auth-screenshots.md) — appPreview uses localhost, so exact-host owner auth fails there; verify through the dev-domain browser tester.
 - [pnpm workspace audit fixes](pnpm-workspace-audit-fixes.md) — `pnpm audit --fix` rewrites workspace YAML and adds overrides but requires a separate install to update the lockfile.
+- [Today-page task priority](today-page-task-priority.md) — User confirmed the Today view should prioritize newest current tasks and keep overdue work in the right panel.
