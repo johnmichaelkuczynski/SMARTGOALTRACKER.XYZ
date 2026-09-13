@@ -87,3 +87,17 @@ mtime_ms = 1789033404968
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:9ea926c8-3611-41d9-a9c4-758605c7ed93/76b00b3f-7189-49b3-96ba-7afa454a153d/b1d1de31-82f7-46c0-ad12-28783b2045c4"
 storage_version_token = "1789033411236653"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "mORBKrrxTNjTccQybl8si"
+uri = "file://exports/Smart_Goal_Tracker_Promotional.mp4"
+type = "video"
+title = "Smart Goal Tracker Promotional Video"
+description = "Finished 16:9 promotional video using the uploaded Smart Goal Tracker recording full-frame, with burned-in captions and relaxed, authoritative American male narration. Original audio removed; no music."
+logical_id = "109890a8-1d35-4d4d-8b39-1cf370d902b5"
+content_hash = "sha256:a6c4a78984017ff60833cf9761edadeb2001ee80c1e03d7e6276ac0a889ce321"
+size = 2765839
+mtime_ms = 1789259551328
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:9ea926c8-3611-41d9-a9c4-758605c7ed93/109890a8-1d35-4d4d-8b39-1cf370d902b5/45648115-834c-4914-8d4c-6f329a30ad62"
+storage_version_token = "1789259796145674"
+content_type = "video/mp4"
