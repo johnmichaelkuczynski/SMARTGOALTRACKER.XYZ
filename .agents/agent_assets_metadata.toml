@@ -101,3 +101,17 @@ mtime_ms = 1789259551328
 storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:9ea926c8-3611-41d9-a9c4-758605c7ed93/109890a8-1d35-4d4d-8b39-1cf370d902b5/45648115-834c-4914-8d4c-6f329a30ad62"
 storage_version_token = "1789259796145674"
 content_type = "video/mp4"
+
+[[outputs]]
+id = "JfxVgpztJttUPGjYE9QRf"
+uri = "file://exports/Smart_Goal_Tracker_Interactive_Living_Diary_45s_Promotional.mp4"
+type = "video"
+title = "Smart Goal Tracker — Interactive Living Diary"
+description = "Final 45-second, 16:9 promotional video with the approved Living Diary script, full-frame app footage, synchronized captions, and relaxed authoritative American male narration. Original audio removed; no music."
+logical_id = "61f7486c-eca3-4e4a-9727-c8c8e8325b1f"
+content_hash = "sha256:50857ad33c19dba9183c4f6e72d2feb19f37d39b1afb2d4e9722982025473e3c"
+size = 2849587
+mtime_ms = 1789261024961
+storage_uri = "gcs://replit-rams-assets-spock/rams/assets/repl:9ea926c8-3611-41d9-a9c4-758605c7ed93/61f7486c-eca3-4e4a-9727-c8c8e8325b1f/54ce6a52-ad87-4eca-af53-29a9112d2869"
+storage_version_token = "1789261057859598"
+content_type = "video/mp4"
