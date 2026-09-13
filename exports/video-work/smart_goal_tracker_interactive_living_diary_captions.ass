@@ -1,0 +1,27 @@
+[Script Info]
+ScriptType: v4.00+
+PlayResX: 1280
+PlayResY: 720
+ScaledBorderAndShadow: yes
+WrapStyle: 2
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Caption,Arial,30,&H00FFFFFF,&H000000FF,&H0013141A,&HA0000000,-1,0,0,0,100,100,0,0,3,8,0,2,70,70,32,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:01.62,Caption,,0,0,0,,Want a diary that talks back?
+Dialogue: 0,0:00:02.02,0:00:03.59,Caption,,0,0,0,,Want a diary that knows you?
+Dialogue: 0,0:00:03.99,0:00:05.28,Caption,,0,0,0,,Well, now you have one.
+Dialogue: 0,0:00:05.68,0:00:07.97,Caption,,0,0,0,,Smart Goal Tracker\Nisn’t just a calendar.
+Dialogue: 0,0:00:08.37,0:00:09.38,Caption,,0,0,0,,It works with you.
+Dialogue: 0,0:00:09.78,0:00:13.92,Caption,,0,0,0,,It knows about you and constantly updates\Nits understanding of who you are
+Dialogue: 0,0:00:13.92,0:00:15.60,Caption,,0,0,0,,and what you are trying to do.
+Dialogue: 0,0:00:15.99,0:00:19.24,Caption,,0,0,0,,It remembers what you have said,\Nknows how you have grown,
+Dialogue: 0,0:00:19.24,0:00:21.48,Caption,,0,0,0,,and knows how you can\Noptimize yourself.
+Dialogue: 0,0:00:21.88,0:00:23.39,Caption,,0,0,0,,Take the Interactive Diary.
+Dialogue: 0,0:00:23.79,0:00:26.26,Caption,,0,0,0,,You write in your diary—\Nand it writes back.
+Dialogue: 0,0:00:26.66,0:00:28.67,Caption,,0,0,0,,And it’s smart because it knows you.
+Dialogue: 0,0:00:29.07,0:00:30.13,Caption,,0,0,0,,Smart Goal Tracker.
+Dialogue: 0,0:00:30.53,0:00:32.38,Caption,,0,0,0,,How can we make your life easier?
