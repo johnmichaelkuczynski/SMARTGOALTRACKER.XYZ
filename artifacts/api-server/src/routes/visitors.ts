@@ -87,6 +87,24 @@ router.post("/track-visit", async (req, res): Promise<void> => {
   }
 });
 
+// ── GET /visitor-count ────────────────────────────────────────────────────────
+// Public all-time unique visitor count for the main application page.
+router.get("/visitor-count", async (req, res): Promise<void> => {
+  try {
+    const client = await getDb();
+    const result = await client.execute(sql`
+      SELECT count(DISTINCT visitor_id) AS visitor_count
+      FROM page_visits
+    `);
+    const row = (result.rows?.[0] ?? {}) as Record<string, unknown>;
+    res.setHeader("Cache-Control", "no-store");
+    res.json({ count: Number(row.visitor_count ?? 0) });
+  } catch (err) {
+    req.log.error({ err }, "Failed to load visitor count");
+    res.status(500).json({ error: "Failed to load visitor count" });
+  }
+});
+
 // ── GET /admin/unique-visitors ────────────────────────────────────────────────
 router.get("/admin/unique-visitors", isAdmin, async (req, res): Promise<void> => {
   try {
