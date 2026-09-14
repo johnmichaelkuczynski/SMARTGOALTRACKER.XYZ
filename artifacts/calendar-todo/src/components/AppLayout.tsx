@@ -127,7 +127,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             <Stat label="Daily" value={`${Math.round(stats.byTimeframe.daily.rate * 100)}%`} />
             <Stat label="Medium" value={`${Math.round(stats.byTimeframe.medium.rate * 100)}%`} />
             <Stat label="Long" value={`${Math.round(stats.byTimeframe.long.rate * 100)}%`} />
-            {location === "/" && <VisitorCounter />}
           </div>
           <SaveIndicator />
           <GlobalSearchInput />
@@ -255,31 +254,6 @@ function HeaderPaymentButton() {
       {active ? "Manage plan" : "Subscribe"}
     </Button>
   );
-}
-
-function VisitorCounter() {
-  const [count, setCount] = useState<number | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    void fetch(`${basePath}/api/visitor-count`, {
-      credentials: "omit",
-      cache: "no-store",
-    })
-      .then(async (response) => {
-        if (!response.ok) return;
-        const body = (await response.json()) as { count?: number };
-        if (!cancelled && typeof body.count === "number" && Number.isFinite(body.count)) {
-          setCount(body.count);
-        }
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  return <Stat label="Visitors" value={count === null ? "—" : count.toLocaleString()} />;
 }
 
 function UserMenu() {

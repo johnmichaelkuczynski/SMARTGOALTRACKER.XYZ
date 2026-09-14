@@ -13,7 +13,7 @@ import {
   startOfWeek,
 } from "date-fns";
 import { AnimatePresence } from "framer-motion";
-import { Ban, CalendarClock, ChevronDown, ChevronLeft, ChevronRight, Target } from "lucide-react";
+import { Ban, CalendarClock, ChevronDown, ChevronLeft, ChevronRight, Target, Users } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -22,6 +22,8 @@ import { fmt, parse, tasksForDate } from "@/lib/recurrence";
 import { setViewDate, resetViewDate } from "@/lib/viewDate";
 import { TaskRow } from "@/components/TaskRow";
 import type { Task } from "@/lib/types";
+
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 export default function DayView() {
   const [selected, setSelected] = useState(() => new Date());
@@ -132,6 +134,7 @@ export default function DayView() {
             {done.length} of {dayTasks.length} done
           </div>
         </div>
+        <VisitorCounter />
         {activeRules.length > 0 && (
           <div className="rounded-lg border border-card-border bg-card p-4 text-sm">
             <Link
@@ -215,6 +218,42 @@ export default function DayView() {
           <GoalRail goals={goals} />
         </div>
       </section>
+    </div>
+  );
+}
+
+function VisitorCounter() {
+  const [count, setCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch(`${basePath}/api/visitor-count`, {
+      credentials: "omit",
+      cache: "no-store",
+    })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const body = (await response.json()) as { count?: number };
+        if (!cancelled && typeof body.count === "number" && Number.isFinite(body.count)) {
+          setCount(body.count);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return (
+    <div className="rounded-lg border border-card-border bg-card p-4 text-sm">
+      <div className="flex items-center gap-1.5 text-xs uppercase tracking-widest text-muted-foreground">
+        <Users className="h-3.5 w-3.5" />
+        Visitors
+      </div>
+      <div className="font-mono text-2xl mt-1">
+        {count === null ? "—" : count.toLocaleString()}
+      </div>
+      <div className="text-xs text-muted-foreground">Unique visitors</div>
     </div>
   );
 }
