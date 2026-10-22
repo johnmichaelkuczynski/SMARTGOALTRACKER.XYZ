@@ -48,26 +48,12 @@ async function ensureTable(): Promise<void> {
   ` as unknown as Parameters<typeof db.execute>[0]);
 }
 
-let tableReadyPromise: Promise<void> | undefined;
-function ensureTableOnce(): Promise<void> {
-  if (!tableReadyPromise) {
-    tableReadyPromise = ensureTable().catch((error: unknown) => {
-      tableReadyPromise = undefined;
-      throw error;
-    });
-  }
-  return tableReadyPromise;
-}
-
-// Provision the visitor table while the API is starting instead of making the
-// first page-view request pay for schema setup. Request handlers await the same
-// single-flight promise if a visitor arrives before initialization completes.
-void ensureTableOnce().catch((err: unknown) => {
-  console.error("Visitor table initialization failed:", err);
-});
-
+let tableReady = false;
 async function getDb() {
-  await ensureTableOnce();
+  if (!tableReady) {
+    await ensureTable();
+    tableReady = true;
+  }
   return db;
 }
 
