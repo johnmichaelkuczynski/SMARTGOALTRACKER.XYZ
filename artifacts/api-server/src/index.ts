@@ -15,7 +15,8 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-createApp().then((app) => {
+try {
+  const app = createApp();
   app.listen(port, (err) => {
     if (err) {
       logger.error({ err }, "Error listening on port");
@@ -23,7 +24,7 @@ createApp().then((app) => {
     }
     logger.info({ port }, "Server listening");
   });
-}).catch((err) => {
+} catch (err) {
   logger.error({ err }, "Failed to create app");
   process.exit(1);
-});
+}

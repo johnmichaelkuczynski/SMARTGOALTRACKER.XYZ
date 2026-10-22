@@ -5,8 +5,9 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 import { setupAuth } from "./lib/auth";
 import { stripeWebhookHandler } from "./routes/billing";
+import healthRouter from "./routes/health";
 
-export async function createApp(): Promise<Express> {
+export function createApp(): Express {
   const app: Express = express();
 
   app.use(
@@ -38,8 +39,10 @@ export async function createApp(): Promise<Express> {
   app.use(express.json({ limit: "10mb" }));
   app.use(express.urlencoded({ extended: true }));
   app.set("trust proxy", 1);
-  await setupAuth(app);
 
+  // Health must not wait on database-backed session-store setup.
+  app.use("/api", healthRouter);
+  setupAuth(app);
   app.use("/api", router);
 
   return app;

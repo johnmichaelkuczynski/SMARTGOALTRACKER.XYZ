@@ -5,6 +5,7 @@ import connectPgSimple from "connect-pg-simple";
 import type { Express, RequestHandler } from "express";
 import pg from "pg";
 import { storage } from "./authStorage";
+import { logger } from "./logger";
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -89,7 +90,7 @@ function requestCallbackUrl(req: any) {
   return fallbackCallbackUrl();
 }
 
-export async function setupAuth(app: Express): Promise<void> {
+export function setupAuth(app: Express): void {
   const { clientID, clientSecret } = getGoogleCredentials();
   const googleEnabled = Boolean(clientID && clientSecret);
   const sessionSecret = process.env.SESSION_SECRET?.trim();
@@ -103,7 +104,7 @@ export async function setupAuth(app: Express): Promise<void> {
     ssl: { rejectUnauthorized: false },
   });
   pool.on("error", (error: Error) => console.error("Session pool error:", error));
-  await pool.query(`
+  const sessionTableReady = pool.query(`
     CREATE TABLE IF NOT EXISTS "user_sessions" (
       "sid" varchar NOT NULL COLLATE "default",
       "sess" json NOT NULL,
@@ -111,7 +112,24 @@ export async function setupAuth(app: Express): Promise<void> {
       CONSTRAINT "user_sessions_pkey" PRIMARY KEY ("sid")
     );
     CREATE INDEX IF NOT EXISTS "IDX_user_sessions_expire" ON "user_sessions" ("expire");
-  `);
+  `).then(
+    () => true,
+    (error: unknown) => {
+      logger.error({ err: error }, "Session store initialization failed");
+      return false;
+    },
+  );
+
+  // Start the server without waiting for PostgreSQL DDL. Health checks remain
+  // available immediately; authenticated API requests wait for the session
+  // store to be ready rather than reaching a partially initialized middleware.
+  app.use("/api", async (_req, res, next) => {
+    if (!(await sessionTableReady)) {
+      res.status(503).json({ error: "Authentication storage is temporarily unavailable." });
+      return;
+    }
+    next();
+  });
 
   const isProduction = process.env.NODE_ENV === "production";
   app.use(
