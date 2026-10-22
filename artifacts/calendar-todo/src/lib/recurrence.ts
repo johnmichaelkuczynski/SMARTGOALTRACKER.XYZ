@@ -9,7 +9,7 @@ import {
   parseISO,
   startOfDay,
 } from "date-fns";
-import type { Task } from "./types";
+import type { Completion, Task } from "./types";
 
 export function fmt(d: Date): string {
   return format(d, "yyyy-MM-dd");
@@ -58,6 +58,40 @@ export function taskOccursOn(task: Task, dateStr: string): boolean {
  */
 export function tasksForDate(tasks: Task[], dateStr: string): Task[] {
   return tasks.filter((t) => !t.archived && taskOccursOn(t, dateStr));
+}
+
+export interface CarriedTaskOccurrence {
+  task: Task;
+  date: string;
+}
+
+/**
+ * Return unfinished task occurrences from earlier dates for display at the
+ * bottom of the selected day's task list. Completions remain keyed to each
+ * occurrence date so history and analytics stay accurate.
+ */
+export function carriedTaskOccurrencesForDate(
+  tasks: Task[],
+  completions: Completion[],
+  dateStr: string,
+): CarriedTaskOccurrence[] {
+  const endDate = addDays(parse(dateStr), -1);
+  const completedOccurrences = new Set(
+    completions.map((completion) => `${completion.taskId}:${completion.date}`),
+  );
+  const carried: CarriedTaskOccurrence[] = [];
+
+  for (const task of tasks) {
+    if (task.archived || isAfter(parse(task.date), endDate)) continue;
+
+    for (const date of occurrencesBetween(task, parse(task.date), endDate)) {
+      if (!completedOccurrences.has(`${task.id}:${date}`)) {
+        carried.push({ task, date });
+      }
+    }
+  }
+
+  return carried;
 }
 
 /**

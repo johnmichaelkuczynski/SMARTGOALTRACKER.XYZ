@@ -13,12 +13,12 @@ import {
   startOfWeek,
 } from "date-fns";
 import { AnimatePresence } from "framer-motion";
-import { Ban, CalendarClock, ChevronDown, ChevronLeft, ChevronRight, Target, Users } from "lucide-react";
+import { Ban, ChevronLeft, ChevronRight, Target, Users } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { useStore } from "@/lib/storage";
-import { fmt, parse, tasksForDate } from "@/lib/recurrence";
+import { carriedTaskOccurrencesForDate, fmt, parse, tasksForDate } from "@/lib/recurrence";
 import { setViewDate, resetViewDate } from "@/lib/viewDate";
 import { TaskRow } from "@/components/TaskRow";
 import type { Task } from "@/lib/types";
@@ -28,7 +28,6 @@ const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 export default function DayView() {
   const [selected, setSelected] = useState(() => new Date());
   const [monthAnchor, setMonthAnchor] = useState(() => new Date());
-  const [showOverdue, setShowOverdue] = useState(true);
   const { tasks, completions, rules = [] } = useStore();
   const activeRules = useMemo(
     () => rules.filter((r) => r.status === "active"),
@@ -69,9 +68,13 @@ export default function DayView() {
   }, [dateStr]);
 
   const dayTasks = useMemo(() => tasksForDate(tasks, dateStr), [tasks, dateStr]);
+  const carriedTasks = useMemo(
+    () => carriedTaskOccurrencesForDate(tasks, completions, dateStr),
+    [tasks, completions, dateStr],
+  );
 
-  const completionFor = (taskId: string) =>
-    completions.find((c) => c.taskId === taskId && c.date === dateStr);
+  const completionFor = (taskId: string, date = dateStr) =>
+    completions.find((c) => c.taskId === taskId && c.date === date);
 
   const todo = dayTasks
     .filter((t) => !completionFor(t.id))
@@ -81,6 +84,11 @@ export default function DayView() {
         ? b.id.localeCompare(a.id)
         : createdOrder;
     });
+  const carriedTodo = [...carriedTasks].sort((a, b) =>
+    b.date.localeCompare(a.date) ||
+    b.task.createdAt.localeCompare(a.task.createdAt) ||
+    b.task.id.localeCompare(a.task.id),
+  );
   const done = dayTasks.filter((t) => completionFor(t.id));
 
   const credit = done.reduce(
@@ -90,19 +98,6 @@ export default function DayView() {
   const dayRate = dayTasks.length ? credit / dayTasks.length : 0;
 
   const todayStr = fmt(new Date());
-  const isViewingToday = dateStr === todayStr;
-
-  const overdue = useMemo(() => {
-    if (!isViewingToday) return [] as Task[];
-    return tasks
-      .filter((t) => {
-        if (t.archived) return false;
-        if (t.recurrence !== "none") return false;
-        if (t.date >= todayStr) return false;
-        return !completions.some((c) => c.taskId === t.id && c.date === t.date);
-      })
-      .sort((a, b) => b.date.localeCompare(a.date));
-  }, [tasks, completions, isViewingToday, todayStr]);
 
   const goals = useMemo(() => {
     const list = tasks.filter(
@@ -184,17 +179,38 @@ export default function DayView() {
           </div>
         </header>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <Column title="To do" count={todo.length}>
-            <AnimatePresence mode="popLayout">
-              {todo.length === 0 ? (
-                <EmptyMsg>Nothing planned. Add something — or rest is a choice too.</EmptyMsg>
-              ) : (
-                todo.map((t) => (
-                  <TaskRow key={t.id} task={t} date={dateStr} />
-                ))
-              )}
-            </AnimatePresence>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <Column title="To do" count={todo.length + carriedTodo.length}>
+            {todo.length + carriedTodo.length === 0 ? (
+              <EmptyMsg>Nothing planned. Add something — or rest is a choice too.</EmptyMsg>
+            ) : (
+              <>
+                <AnimatePresence mode="popLayout">
+                  {todo.map((t) => (
+                    <TaskRow key={t.id} task={t} date={dateStr} />
+                  ))}
+                </AnimatePresence>
+                {carriedTodo.length > 0 && (
+                  <>
+                    <div className="flex items-center gap-2 py-2 text-[11px] uppercase tracking-widest text-muted-foreground">
+                      <span className="h-px flex-1 bg-border" />
+                      <span>Carried forward · {carriedTodo.length}</span>
+                      <span className="h-px flex-1 bg-border" />
+                    </div>
+                    <AnimatePresence mode="popLayout">
+                      {carriedTodo.map(({ task, date }) => (
+                        <TaskRow
+                          key={`carried-${task.id}-${date}`}
+                          task={task}
+                          date={date}
+                          showDate
+                        />
+                      ))}
+                    </AnimatePresence>
+                  </>
+                )}
+              </>
+            )}
           </Column>
           <Column title="Completed" count={done.length} accent>
             <AnimatePresence mode="popLayout">
@@ -207,12 +223,6 @@ export default function DayView() {
               )}
             </AnimatePresence>
           </Column>
-          <OverdueRail
-            overdue={overdue}
-            visible={isViewingToday}
-            expanded={showOverdue}
-            onToggle={() => setShowOverdue((v) => !v)}
-          />
         </div>
         <div className="mt-6">
           <GoalRail goals={goals} />
@@ -254,63 +264,6 @@ function VisitorCounter() {
         {count === null ? "—" : count.toLocaleString()}
       </div>
       <div className="text-xs text-muted-foreground">Unique visitors</div>
-    </div>
-  );
-}
-
-function OverdueRail({
-  overdue,
-  visible,
-  expanded,
-  onToggle,
-}: {
-  overdue: Task[];
-  visible: boolean;
-  expanded: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <div className="rounded-xl border border-amber-500/40 bg-amber-400/[0.06] p-4 min-h-[300px]">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex items-center justify-between w-full"
-        disabled={!visible || overdue.length === 0}
-      >
-        <div className="flex items-center gap-2">
-          <CalendarClock className="h-4 w-4 text-amber-700 dark:text-amber-400" />
-          <h3 className="text-xs uppercase tracking-widest text-amber-800 dark:text-amber-300">
-            Overdue · carried over
-          </h3>
-          <span className="font-mono text-xs text-amber-700/80 dark:text-amber-400/80">
-            {visible ? overdue.length : 0}
-          </span>
-        </div>
-        {visible && overdue.length > 0 && (
-          <ChevronDown
-            className={`h-4 w-4 text-amber-700/70 transition-transform ${
-              expanded ? "" : "-rotate-90"
-            }`}
-          />
-        )}
-      </button>
-      <p className="text-[11px] text-amber-800/70 dark:text-amber-300/70 mt-1">
-        {visible
-          ? "Unfinished tasks from earlier days. Check one off to clear it, or open it to reschedule or delete."
-          : "Carried-over tasks appear here when viewing Today."}
-      </p>
-      {visible && overdue.length === 0 && (
-        <EmptyMsg>No overdue tasks.</EmptyMsg>
-      )}
-      {visible && expanded && overdue.length > 0 && (
-        <div className="mt-3 space-y-2 max-h-[720px] overflow-y-auto pr-1">
-          <AnimatePresence mode="popLayout">
-            {overdue.map((t) => (
-              <TaskRow key={t.id} task={t} date={t.date} showDate />
-            ))}
-          </AnimatePresence>
-        </div>
-      )}
     </div>
   );
 }
