@@ -3,8 +3,8 @@ name: Today-page task priority
 description: Confirmed UX priority for arranging current and overdue work on the Today view.
 ---
 
-Keep current-day tasks at the top of the main Today area, ordered with the newest entry first. Keep Overdue/Carried Over in the right-hand panel so it does not obscure current work.
+Keep current-day tasks at the top of the main Today area, ordered with the newest entry first. Unfinished work carries into the next day below the fresh tasks, never above them.
 
-**Why:** The user confirmed this arrangement is much better because recent, often urgent entries remain immediately visible while older unfinished work stays accessible without dominating the page.
+**Why:** After previously approving a separate overdue panel, the user explicitly requested that unfinished tasks be pushed to the next day at the bottom of the pile so they do not obstruct fresh tasks.
 
 **How to apply:** Preserve this information hierarchy in future Today-page layout or sorting changes unless the user explicitly requests a different arrangement.

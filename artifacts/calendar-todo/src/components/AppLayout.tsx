@@ -100,7 +100,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <header className="border-b border-border bg-card/60 backdrop-blur sticky top-0 z-30">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center gap-6">
+        <div className="max-w-6xl mx-auto px-6 py-4 flex flex-wrap items-center gap-6">
           <div className="flex items-center gap-3">
             <a
               href="https://zhisystems.ai/"
@@ -137,7 +137,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           </Button>
           <UserMenu />
         </div>
-        <nav className="max-w-6xl mx-auto px-6 flex gap-0 -mb-px">
+        <nav className="max-w-6xl mx-auto px-6 flex gap-0 -mb-px overflow-x-auto">
           {NAV.filter((n) => isAuthenticated || !n.requiresAuth).map((n) => {
             const active = location === n.href;
             return (
@@ -174,7 +174,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           </a>
         </nav>
       </header>
-      <main className="flex-1 max-w-6xl mx-auto px-6 py-8 w-full">{children}</main>
+      <main className="flex-1 min-w-0 max-w-6xl mx-auto px-6 py-8 w-full">{children}</main>
       <AddTaskDialog
         key={editId ?? `new:${createDate ?? ""}:${createExtra?.timeframe ?? ""}`}
         open={open}

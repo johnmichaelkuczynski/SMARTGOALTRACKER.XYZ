@@ -16,6 +16,7 @@ import type {
   Task,
 } from "./types";
 import { seedData } from "./seed";
+import { restoreUnsyncedDiaryEdits } from "./diaryDrafts";
 
 const LEGACY_KEY = "tally:v1";
 const DEVICE_KEY = "tally:device-id";
@@ -255,10 +256,18 @@ export async function syncUser(userId: string): Promise<void> {
     if (token !== syncToken) return;
     if (res.data && typeof res.data === "object") {
       setServerUpdatedAt(res.updatedAt);
+      const serverState = normalize(res.data as Partial<StoreState>);
+      const recoveredDiary = restoreUnsyncedDiaryEdits(
+        serverState.diary ?? [],
+        cached?.diary ?? [],
+        res.updatedAt,
+      );
+      const recoveredDraft = JSON.stringify(recoveredDiary) !== JSON.stringify(serverState.diary);
       suppressSave = true;
-      state = normalize(res.data as Partial<StoreState>);
+      state = { ...serverState, diary: recoveredDiary };
       persist();
       suppressSave = false;
+      if (recoveredDraft) scheduleSave(userId);
     } else {
       setServerUpdatedAt(res.updatedAt);
       state = normalize(cached ?? emptyState());
@@ -501,20 +510,21 @@ export function deleteDiaryEntry(date: string, entryId?: string) {
   persist();
 }
 
-/** Upsert one diary entry for a calendar day. Empty text removes the entry. */
+/** Save prose verbatim; deletion is an explicit action, never a side effect of editing. */
 export function setDiaryEntry(date: string, text: string, entryId?: string) {
   const trimmed = text.trim();
   const existing = getDiaryEntry(date, entryId);
+  if (!existing && !trimmed) return;
   const targetId = existing?.id ?? entryId ?? uid();
   const rest = (state.diary ?? []).filter((entry) => entry !== existing);
   state = {
     ...state,
-    diary: trimmed
+    diary: existing || trimmed
       ? [...rest, {
           ...existing,
           id: targetId,
           date,
-          text: trimmed,
+          text,
           createdAt: existing?.createdAt ?? new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         }]
@@ -541,6 +551,53 @@ export function addDiaryMessage(
   state = {
     ...state,
     diary: [...(state.diary ?? []).filter((entry) => entry !== existing), next],
+  };
+  persist();
+}
+
+/** Save unsent writing without trimming paragraph breaks or altering the entry. */
+export function setDiaryDraft(date: string, draft: string, entryId: string) {
+  const existing = getDiaryEntry(date, entryId);
+  if (!existing) return;
+  const now = new Date().toISOString();
+  state = {
+    ...state,
+    diary: (state.diary ?? []).map((entry) =>
+      entry === existing ? { ...entry, draft, draftUpdatedAt: now, updatedAt: now } : entry,
+    ),
+  };
+  persist();
+}
+
+/** Commit a turn atomically; questions never become part of the diary's prose. */
+export function submitDiaryMessage(
+  date: string,
+  entryId: string,
+  content: string,
+  kind: "entry" | "question" = "entry",
+) {
+  const existing = getDiaryEntry(date, entryId);
+  if (!existing) throw new Error("The selected diary entry no longer exists.");
+  if (!content.trim()) return;
+  const now = new Date().toISOString();
+  const next: DiaryEntry = {
+    ...existing,
+    text: kind === "question"
+      ? existing.text
+      : !existing.conversation?.length && existing.text.trim() === content.trim()
+        ? existing.text
+        : [existing.text, content].filter(Boolean).join("\n\n"),
+    draft: kind === "entry" ? "" : existing.draft,
+    draftUpdatedAt: kind === "entry" ? now : existing.draftUpdatedAt,
+    conversation: [
+      ...(existing.conversation ?? []),
+      { id: uid(), role: "user", content, kind, createdAt: now },
+    ],
+    updatedAt: now,
+  };
+  state = {
+    ...state,
+    diary: (state.diary ?? []).map((entry) => entry === existing ? next : entry),
   };
   persist();
 }

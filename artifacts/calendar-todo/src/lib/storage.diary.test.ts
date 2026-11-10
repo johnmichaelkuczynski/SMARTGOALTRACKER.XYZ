@@ -94,3 +94,46 @@ test("normal diary editing updates only the selected same-day entry", () => {
   assert.equal(storage.getDiaryEntry(date, second.id)?.text, "Unchanged second entry");
   assert.equal(storage.getDiaryEntries(date).length, 2);
 });
+
+test("interactive drafts preserve paragraphs and remain isolated across same-day entries", () => {
+  const first = storage.createDiaryEntry(date);
+  const second = storage.createDiaryEntry(date);
+  const draft = "First paragraph.\n\nSecond paragraph with substance.\n";
+  storage.setDiaryDraft(date, draft, first.id!);
+  storage.setDiaryDraft(date, "Different draft", second.id!);
+  const reloaded = JSON.parse(JSON.stringify(storage.getState()));
+  assert.equal(reloaded.diary.find((entry: { id: string }) => entry.id === first.id).draft, draft);
+  assert.equal(storage.getDiaryEntry(date, second.id)?.draft, "Different draft");
+});
+
+test("questions do not clear the writing draft or become diary prose", () => {
+  const entry = storage.createDiaryEntry(date);
+  storage.setDiaryEntry(date, "Existing prose.\n\nAnother paragraph.\n", entry.id);
+  storage.setDiaryDraft(date, "Unsent thoughts.\n\nStill writing.", entry.id!);
+  storage.submitDiaryMessage(date, entry.id!, "What does my writing reveal?", "question");
+  const saved = storage.getDiaryEntry(date, entry.id)!;
+  assert.equal(saved.text, "Existing prose.\n\nAnother paragraph.\n");
+  assert.equal(saved.draft, "Unsent thoughts.\n\nStill writing.");
+  assert.equal(saved.conversation?.[0].kind, "question");
+});
+
+test("an explicit diary submission saves prose and conversation together before the AI responds", () => {
+  const entry = storage.createDiaryEntry(date);
+  const content = "A thoughtful first paragraph.\n\nA second paragraph.";
+  storage.setDiaryDraft(date, content, entry.id!);
+  storage.submitDiaryMessage(date, entry.id!, content);
+  const saved = storage.getDiaryEntry(date, entry.id)!;
+  assert.equal(saved.text, content);
+  assert.equal(saved.draft, "");
+  assert.equal(saved.conversation?.[0].content, content);
+  storage.setDiaryDraft(date, "Next thoughts", entry.id!);
+  storage.addDiaryMessage(date, { role: "assistant", content: "A concise response." }, entry.id);
+  assert.equal(storage.getDiaryEntry(date, entry.id)?.draft, "Next thoughts");
+});
+
+test("empty prose edits cannot delete the entry's conversation", () => {
+  const entry = storage.createDiaryEntry(date);
+  storage.submitDiaryMessage(date, entry.id!, "First writing");
+  storage.setDiaryEntry(date, "", entry.id);
+  assert.equal(storage.getDiaryEntry(date, entry.id)?.conversation?.length, 1);
+});

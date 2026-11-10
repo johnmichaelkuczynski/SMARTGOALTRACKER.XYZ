@@ -84,12 +84,16 @@ export interface DiaryEntry {
   createdAt?: string;
   updatedAt: string;
   conversation?: DiaryMessage[];
+  /** Unsent writing, saved verbatim independently from the conversation. */
+  draft?: string;
+  draftUpdatedAt?: string;
 }
 
 export interface DiaryMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
+  kind?: "entry" | "question";
   createdAt: string;
 }
 

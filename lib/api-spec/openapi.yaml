@@ -23,6 +23,56 @@ tags:
   - name: voice
     description: Voice dictation — transcription and structured item extraction
 paths:
+  /diary/chat:
+    post:
+      operationId: chatWithDiary
+      tags: [diary]
+      summary: Discuss a diary entry or ask about saved entries
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DiaryChatInput"
+      responses:
+        "200":
+          description: A concise diary response
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiaryChatReply"
+        "400":
+          description: Invalid diary request
+        "401":
+          description: Sign-in required
+        "404":
+          description: Entry not found
+        "500":
+          description: Response unavailable
+  /diary/analytics:
+    post:
+      operationId: analyzeDiary
+      tags: [diary]
+      summary: Analyze authenticated saved diary writing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DiaryAnalyticsInput"
+      responses:
+        "200":
+          description: Evidence-based diary analytics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiaryAnalyticsReport"
+        "400":
+          description: No writing or invalid date range
+        "401":
+          description: Sign-in required
+        "500":
+          description: Analysis unavailable
   /healthz:
     get:
       operationId: healthCheck
@@ -411,6 +461,69 @@ paths:
                 $ref: "#/components/schemas/ApiErrorMessage"
 components:
   schemas:
+    DiaryChatInput:
+      type: object
+      required: [date, messages]
+      properties:
+        date: {type: string, pattern: '^\d{4}-\d{2}-\d{2}$'}
+        entryId: {type: string, maxLength: 200}
+        entry: {type: string}
+        messages:
+          type: array
+          minItems: 1
+          maxItems: 40
+          items: {$ref: "#/components/schemas/DiaryChatMessage"}
+    DiaryChatMessage:
+      type: object
+      required: [role, content]
+      properties:
+        role: {type: string, enum: [user, assistant]}
+        content: {type: string, minLength: 1}
+    DiaryChatReply:
+      type: object
+      required: [reply]
+      properties:
+        reply: {type: string}
+    DiaryAnalyticsInput:
+      type: object
+      properties:
+        from: {type: string, pattern: '^\d{4}-\d{2}-\d{2}$'}
+        to: {type: string, pattern: '^\d{4}-\d{2}-\d{2}$'}
+        question: {type: string, maxLength: 2000}
+    DiaryInsight:
+      type: object
+      required: [title, observation, dates]
+      properties:
+        title: {type: string}
+        observation: {type: string}
+        dates:
+          type: array
+          items: {type: string}
+    DiaryWritingStats:
+      type: object
+      required: [entryCount, writingDays, wordCount, from, to]
+      properties:
+        entryCount: {type: integer}
+        writingDays: {type: integer}
+        wordCount: {type: integer}
+        from: {type: string}
+        to: {type: string}
+    DiaryAnalyticsReport:
+      type: object
+      required: [summary, themes, changes, suggestions, stats, generatedAt]
+      properties:
+        summary: {type: string}
+        themes:
+          type: array
+          items: {$ref: "#/components/schemas/DiaryInsight"}
+        changes:
+          type: array
+          items: {type: string}
+        suggestions:
+          type: array
+          items: {type: string}
+        stats: {$ref: "#/components/schemas/DiaryWritingStats"}
+        generatedAt: {type: string}
     HealthStatus:
       type: object
       properties:
